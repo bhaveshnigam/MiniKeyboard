@@ -20,7 +20,17 @@ struct ContentView: View {
                     // so it scrolls rather than clipping.
                     ScrollView {
                         VStack(spacing: 16) {
-                            LayerPicker(selection: $model.selectedLayer)
+                            HStack(spacing: 10) {
+                                LayerPicker(selection: $model.selectedLayer)
+                                Button(role: .destructive) {
+                                    model.confirmClearLayer = true
+                                } label: {
+                                    Label("Clear Layer", systemImage: "eraser")
+                                        .labelStyle(.titleAndIcon)
+                                }
+                                .controlSize(.small)
+                                .help("Empty every key and knob on this layer")
+                            }
                             PadView(model: model)
                             LightingView(model: model)
                             Spacer(minLength: 0)
@@ -37,6 +47,17 @@ struct ContentView: View {
             }
         }
         .overlay(alignment: .bottom) { ToastView(model: model) }
+        .confirmationDialog("Clear layer \(model.selectedLayer + 1)?",
+                            isPresented: $model.confirmClearLayer,
+                            titleVisibility: .visible) {
+            Button("Clear Layer \(model.selectedLayer + 1)", role: .destructive) {
+                model.clearLayer()
+            }
+            Button("Cancel", role: .cancel) { }
+        } message: {
+            Text("Every key and knob on this layer is emptied. "
+                 + "The other layers are left alone.")
+        }
         .toolbar {
             ToolbarItemGroup {
                 Button { showingImporter = true } label: {
@@ -65,7 +86,8 @@ struct ContentView: View {
                 Button { model.apply() } label: {
                     Label("Apply", systemImage: "arrow.up.circle.fill")
                 }
-                .help("Write this profile to the pad")
+                .help(model.autoSave ? "Write now, without waiting for auto-save"
+                                     : "Write this profile to the pad")
                 .disabled(!model.isConnected)
                 .keyboardShortcut("s", modifiers: .command)
             }
@@ -113,12 +135,26 @@ struct DeviceBar: View {
             if let busy = model.busyMessage {
                 ProgressView().controlSize(.small)
                 Text(busy).foregroundStyle(.secondary).font(.callout)
+            } else if model.isAutoSaving {
+                ProgressView().controlSize(.small)
+                Text("Saving…").foregroundStyle(.secondary).font(.callout)
             } else if model.hasUnsavedChanges {
-                Label("Unsaved changes", systemImage: "circle.fill")
+                Label(model.autoSave ? "Saving shortly" : "Unsaved changes",
+                      systemImage: "circle.fill")
                     .font(.caption.weight(.medium))
                     .labelStyle(DotLabelStyle())
                     .foregroundStyle(Theme.brass)
+            } else if model.isConnected {
+                Label("Saved to pad", systemImage: "checkmark.circle.fill")
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(.secondary)
             }
+
+            Toggle("Auto-save", isOn: $model.autoSave)
+                .toggleStyle(.switch)
+                .controlSize(.mini)
+                .font(.caption)
+                .help("Write every change to the pad as you make it")
 
             Button("Reconnect") { model.connect() }
                 .controlSize(.small)

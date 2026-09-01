@@ -18,6 +18,30 @@ public struct ShortcutPreset: Identifiable, Sendable, Hashable, Codable {
     public var parsed: KeyAction? { try? KeyAction.parse(action) }
 }
 
+/// What a rotary encoder does in a preset.
+///
+/// Rotation has to be something you can repeat — volume, scrolling, stepping
+/// through photos. Filling knobs from the same flat list as the keys puts
+/// things like "Search" on a turn, which is useless.
+public struct KnobPreset: Sendable, Hashable, Codable {
+    /// What the knob controls, e.g. "Volume".
+    public let name: String
+    public let counterClockwise: ShortcutPreset
+    public let press: ShortcutPreset
+    public let clockwise: ShortcutPreset
+
+    public init(_ name: String,
+                ccw: ShortcutPreset, press: ShortcutPreset, cw: ShortcutPreset) {
+        self.name = name
+        self.counterClockwise = ccw
+        self.press = press
+        self.clockwise = cw
+    }
+
+    /// In pad slot order: turn left, press, turn right.
+    public var inOrder: [ShortcutPreset] { [counterClockwise, press, clockwise] }
+}
+
 /// A curated set of shortcuts for one application.
 public struct AppPreset: Identifiable, Sendable, Hashable, Codable {
     public let id: String
@@ -31,12 +55,16 @@ public struct AppPreset: Identifiable, Sendable, Hashable, Codable {
     /// Fallback for apps whose bundle id changes between versions, matched
     /// against app names in the standard Applications folders.
     public let namePrefix: String?
+    /// Shortcuts for the physical keys.
     public let shortcuts: [ShortcutPreset]
+    /// What each knob does, in order.
+    public let knobs: [KnobPreset]
 
     public init(id: String, name: String, category: String,
                 note: String? = nil,
                 bundleIDs: [String] = [],
                 namePrefix: String? = nil,
+                knobs: [KnobPreset] = [],
                 shortcuts: [ShortcutPreset]) {
         self.id = id
         self.name = name
@@ -44,8 +72,12 @@ public struct AppPreset: Identifiable, Sendable, Hashable, Codable {
         self.note = note
         self.bundleIDs = bundleIDs
         self.namePrefix = namePrefix
+        self.knobs = knobs
         self.shortcuts = shortcuts
     }
+
+    /// Every binding this preset defines, keys then knobs.
+    public var totalBindings: Int { shortcuts.count + knobs.count * Wire.slotsPerKnob }
 
     /// True when the preset is not tied to a specific installed app.
     public var isUniversal: Bool { bundleIDs.isEmpty && namePrefix == nil }
@@ -82,6 +114,20 @@ public enum PresetLibrary {
 
     static let macOS = AppPreset(
         id: "macos", name: "macOS", category: "System",
+                knobs: [
+            KnobPreset("Volume",
+                       ccw: ShortcutPreset("Volume down", "media:volumedown"),
+                       press: ShortcutPreset("Mute", "media:mute"),
+                       cw: ShortcutPreset("Volume up", "media:volumeup")),
+            KnobPreset("Brightness",
+                       ccw: ShortcutPreset("Brightness down", "media:brightnessdown"),
+                       press: ShortcutPreset("Play / pause", "media:playpause"),
+                       cw: ShortcutPreset("Brightness up", "media:brightnessup")),
+            KnobPreset("Scroll",
+                       ccw: ShortcutPreset("Scroll down", "mouse:wheeldown"),
+                       press: ShortcutPreset("Middle click", "mouse:middle"),
+                       cw: ShortcutPreset("Scroll up", "mouse:wheelup")),
+        ],
         shortcuts: [
             ShortcutPreset("Mission Control", "ctrl+up"),
             ShortcutPreset("Application windows", "ctrl+down"),
@@ -110,6 +156,20 @@ public enum PresetLibrary {
     static let textEditing = AppPreset(
         id: "text", name: "Text editing", category: "System",
         note: "Works in almost any Mac app.",
+                knobs: [
+            KnobPreset("Scroll",
+                       ccw: ShortcutPreset("Scroll down", "mouse:wheeldown"),
+                       press: ShortcutPreset("Middle click", "mouse:middle"),
+                       cw: ShortcutPreset("Scroll up", "mouse:wheelup")),
+            KnobPreset("History",
+                       ccw: ShortcutPreset("Undo", "cmd+z"),
+                       press: ShortcutPreset("Save", "cmd+s"),
+                       cw: ShortcutPreset("Redo", "shift+cmd+z")),
+            KnobPreset("Pan",
+                       ccw: ShortcutPreset("Scroll left", "mouse:scrollleft"),
+                       press: ShortcutPreset("Click", "mouse:left"),
+                       cw: ShortcutPreset("Scroll right", "mouse:scrollright")),
+        ],
         shortcuts: [
             ShortcutPreset("Copy", "cmd+c"),
             ShortcutPreset("Cut", "cmd+x"),
@@ -131,6 +191,20 @@ public enum PresetLibrary {
     static let slack = AppPreset(
         id: "slack", name: "Slack", category: "Meetings & chat",
         bundleIDs: ["com.tinyspeck.slackmacgap"],
+                knobs: [
+            KnobPreset("Unread channels",
+                       ccw: ShortcutPreset("Previous unread", "shift+alt+up"),
+                       press: ShortcutPreset("Mark all read", "shift+esc"),
+                       cw: ShortcutPreset("Next unread", "shift+alt+down")),
+            KnobPreset("Scroll",
+                       ccw: ShortcutPreset("Scroll down", "mouse:wheeldown"),
+                       press: ShortcutPreset("Middle click", "mouse:middle"),
+                       cw: ShortcutPreset("Scroll up", "mouse:wheelup")),
+            KnobPreset("Volume",
+                       ccw: ShortcutPreset("Volume down", "media:volumedown"),
+                       press: ShortcutPreset("Mute", "media:mute"),
+                       cw: ShortcutPreset("Volume up", "media:volumeup")),
+        ],
         shortcuts: [
             ShortcutPreset("Quick switcher", "cmd+k"),
             ShortcutPreset("Search", "cmd+g"),
@@ -151,6 +225,20 @@ public enum PresetLibrary {
     static let teams = AppPreset(
         id: "teams", name: "Microsoft Teams", category: "Meetings & chat",
         bundleIDs: ["com.microsoft.teams2", "com.microsoft.teams"],
+                knobs: [
+            KnobPreset("Call",
+                       ccw: ShortcutPreset("Volume down", "media:volumedown"),
+                       press: ShortcutPreset("Toggle mute", "shift+cmd+m"),
+                       cw: ShortcutPreset("Volume up", "media:volumeup")),
+            KnobPreset("Scroll",
+                       ccw: ShortcutPreset("Scroll down", "mouse:wheeldown"),
+                       press: ShortcutPreset("Middle click", "mouse:middle"),
+                       cw: ShortcutPreset("Scroll up", "mouse:wheelup")),
+            KnobPreset("Pan",
+                       ccw: ShortcutPreset("Scroll left", "mouse:scrollleft"),
+                       press: ShortcutPreset("Click", "mouse:left"),
+                       cw: ShortcutPreset("Scroll right", "mouse:scrollright")),
+        ],
         shortcuts: [
             ShortcutPreset("Toggle mute", "shift+cmd+m"),
             ShortcutPreset("Toggle video", "shift+cmd+o"),
@@ -170,6 +258,20 @@ public enum PresetLibrary {
         id: "zoom", name: "Zoom", category: "Meetings & chat",
         note: "Enable \"Use global shortcuts\" in Zoom to trigger these from any app.",
         bundleIDs: ["us.zoom.xos"],
+                knobs: [
+            KnobPreset("Call",
+                       ccw: ShortcutPreset("Volume down", "media:volumedown"),
+                       press: ShortcutPreset("Toggle mute", "shift+cmd+a"),
+                       cw: ShortcutPreset("Volume up", "media:volumeup")),
+            KnobPreset("Scroll",
+                       ccw: ShortcutPreset("Scroll down", "mouse:wheeldown"),
+                       press: ShortcutPreset("Middle click", "mouse:middle"),
+                       cw: ShortcutPreset("Scroll up", "mouse:wheelup")),
+            KnobPreset("Pan",
+                       ccw: ShortcutPreset("Scroll left", "mouse:scrollleft"),
+                       press: ShortcutPreset("Click", "mouse:left"),
+                       cw: ShortcutPreset("Scroll right", "mouse:scrollright")),
+        ],
         shortcuts: [
             ShortcutPreset("Toggle mute", "shift+cmd+a"),
             ShortcutPreset("Toggle video", "shift+cmd+v"),
@@ -190,6 +292,16 @@ public enum PresetLibrary {
         id: "meet", name: "Google Meet", category: "Meetings & chat",
         note: "Browser shortcuts; Meet must be the focused tab.",
         bundleIDs: ["com.google.Chrome", "com.apple.Safari"],
+                knobs: [
+            KnobPreset("Call",
+                       ccw: ShortcutPreset("Volume down", "media:volumedown"),
+                       press: ShortcutPreset("Toggle mute", "cmd+d"),
+                       cw: ShortcutPreset("Volume up", "media:volumeup")),
+            KnobPreset("Scroll",
+                       ccw: ShortcutPreset("Scroll down", "mouse:wheeldown"),
+                       press: ShortcutPreset("Middle click", "mouse:middle"),
+                       cw: ShortcutPreset("Scroll up", "mouse:wheelup")),
+        ],
         shortcuts: [
             ShortcutPreset("Toggle mute", "cmd+d"),
             ShortcutPreset("Toggle video", "cmd+e"),
@@ -202,6 +314,16 @@ public enum PresetLibrary {
     static let discord = AppPreset(
         id: "discord", name: "Discord", category: "Meetings & chat",
         bundleIDs: ["com.hnc.Discord"],
+                knobs: [
+            KnobPreset("Voice",
+                       ccw: ShortcutPreset("Volume down", "media:volumedown"),
+                       press: ShortcutPreset("Toggle mute", "shift+cmd+m"),
+                       cw: ShortcutPreset("Volume up", "media:volumeup")),
+            KnobPreset("Scroll",
+                       ccw: ShortcutPreset("Scroll down", "mouse:wheeldown"),
+                       press: ShortcutPreset("Middle click", "mouse:middle"),
+                       cw: ShortcutPreset("Scroll up", "mouse:wheelup")),
+        ],
         shortcuts: [
             ShortcutPreset("Toggle mute", "shift+cmd+m"),
             ShortcutPreset("Toggle deafen", "shift+cmd+d"),
@@ -218,6 +340,20 @@ public enum PresetLibrary {
         id: "lightroom", name: "Lightroom Classic", category: "Creative",
         note: "Single-letter shortcuts only fire when the photo area has focus.",
         bundleIDs: ["com.adobe.LightroomClassicCC7"], namePrefix: "Adobe Lightroom Classic",
+                knobs: [
+            KnobPreset("Photos",
+                       ccw: ShortcutPreset("Previous photo", "left"),
+                       press: ShortcutPreset("Flag as pick", "p"),
+                       cw: ShortcutPreset("Next photo", "right")),
+            KnobPreset("Scroll",
+                       ccw: ShortcutPreset("Scroll down", "mouse:wheeldown"),
+                       press: ShortcutPreset("Middle click", "mouse:middle"),
+                       cw: ShortcutPreset("Scroll up", "mouse:wheelup")),
+            KnobPreset("Filmstrip",
+                       ccw: ShortcutPreset("Scroll left", "mouse:scrollleft"),
+                       press: ShortcutPreset("Loupe view", "e"),
+                       cw: ShortcutPreset("Scroll right", "mouse:scrollright")),
+        ],
         shortcuts: [
             ShortcutPreset("Library module", "g"),
             ShortcutPreset("Develop module", "d"),
@@ -254,6 +390,20 @@ public enum PresetLibrary {
     static let photoshop = AppPreset(
         id: "photoshop", name: "Photoshop", category: "Creative",
         bundleIDs: ["com.adobe.Photoshop"], namePrefix: "Adobe Photoshop",
+                knobs: [
+            KnobPreset("Brush size",
+                       ccw: ShortcutPreset("Smaller", "leftbracket"),
+                       press: ShortcutPreset("Brush tool", "b"),
+                       cw: ShortcutPreset("Larger", "rightbracket")),
+            KnobPreset("Zoom",
+                       ccw: ShortcutPreset("Zoom out", "cmd+-"),
+                       press: ShortcutPreset("Fit on screen", "cmd+0"),
+                       cw: ShortcutPreset("Zoom in", "cmd+=")),
+            KnobPreset("Scroll",
+                       ccw: ShortcutPreset("Scroll down", "mouse:wheeldown"),
+                       press: ShortcutPreset("Middle click", "mouse:middle"),
+                       cw: ShortcutPreset("Scroll up", "mouse:wheelup")),
+        ],
         shortcuts: [
             ShortcutPreset("Move tool", "v"),
             ShortcutPreset("Marquee", "m"),
@@ -281,6 +431,20 @@ public enum PresetLibrary {
     static let finalCut = AppPreset(
         id: "finalcut", name: "Final Cut Pro", category: "Creative",
         bundleIDs: ["com.apple.FinalCut"],
+                knobs: [
+            KnobPreset("Playhead",
+                       ccw: ShortcutPreset("Previous frame", "left"),
+                       press: ShortcutPreset("Play / pause", "space"),
+                       cw: ShortcutPreset("Next frame", "right")),
+            KnobPreset("Timeline zoom",
+                       ccw: ShortcutPreset("Zoom out", "cmd+-"),
+                       press: ShortcutPreset("Fit timeline", "shift+z"),
+                       cw: ShortcutPreset("Zoom in", "cmd+=")),
+            KnobPreset("Scroll",
+                       ccw: ShortcutPreset("Scroll down", "mouse:wheeldown"),
+                       press: ShortcutPreset("Middle click", "mouse:middle"),
+                       cw: ShortcutPreset("Scroll up", "mouse:wheelup")),
+        ],
         shortcuts: [
             ShortcutPreset("Blade", "b"),
             ShortcutPreset("Select tool", "a"),
@@ -306,6 +470,16 @@ public enum PresetLibrary {
     static let davinci = AppPreset(
         id: "resolve", name: "DaVinci Resolve", category: "Creative",
         bundleIDs: ["com.blackmagic-design.DaVinciResolve"], namePrefix: "DaVinci Resolve",
+                knobs: [
+            KnobPreset("Playhead",
+                       ccw: ShortcutPreset("Previous frame", "left"),
+                       press: ShortcutPreset("Play / pause", "space"),
+                       cw: ShortcutPreset("Next frame", "right")),
+            KnobPreset("Timeline zoom",
+                       ccw: ShortcutPreset("Zoom out", "cmd+-"),
+                       press: ShortcutPreset("Fit timeline", "shift+z"),
+                       cw: ShortcutPreset("Zoom in", "cmd+=")),
+        ],
         shortcuts: [
             ShortcutPreset("Media page", "shift+2"),
             ShortcutPreset("Cut page", "shift+3"),
@@ -325,6 +499,20 @@ public enum PresetLibrary {
     static let figma = AppPreset(
         id: "figma", name: "Figma", category: "Creative",
         bundleIDs: ["com.figma.Desktop"],
+                knobs: [
+            KnobPreset("Zoom",
+                       ccw: ShortcutPreset("Zoom out", "cmd+-"),
+                       press: ShortcutPreset("Zoom to fit", "shift+1"),
+                       cw: ShortcutPreset("Zoom in", "cmd+=")),
+            KnobPreset("Scroll",
+                       ccw: ShortcutPreset("Scroll down", "mouse:wheeldown"),
+                       press: ShortcutPreset("Middle click", "mouse:middle"),
+                       cw: ShortcutPreset("Scroll up", "mouse:wheelup")),
+            KnobPreset("Pan",
+                       ccw: ShortcutPreset("Scroll left", "mouse:scrollleft"),
+                       press: ShortcutPreset("Click", "mouse:left"),
+                       cw: ShortcutPreset("Scroll right", "mouse:scrollright")),
+        ],
         shortcuts: [
             ShortcutPreset("Move tool", "v"),
             ShortcutPreset("Frame tool", "f"),
@@ -345,6 +533,20 @@ public enum PresetLibrary {
     static let vscode = AppPreset(
         id: "vscode", name: "VS Code", category: "Work",
         bundleIDs: ["com.microsoft.VSCode", "com.microsoft.VSCodeInsiders", "com.todesktop.230313mzl4w4u92"],
+                knobs: [
+            KnobPreset("Scroll",
+                       ccw: ShortcutPreset("Scroll down", "mouse:wheeldown"),
+                       press: ShortcutPreset("Middle click", "mouse:middle"),
+                       cw: ShortcutPreset("Scroll up", "mouse:wheelup")),
+            KnobPreset("Editors",
+                       ccw: ShortcutPreset("Previous editor", "shift+cmd+leftbracket"),
+                       press: ShortcutPreset("Close editor", "cmd+w"),
+                       cw: ShortcutPreset("Next editor", "shift+cmd+rightbracket")),
+            KnobPreset("Pan",
+                       ccw: ShortcutPreset("Scroll left", "mouse:scrollleft"),
+                       press: ShortcutPreset("Click", "mouse:left"),
+                       cw: ShortcutPreset("Scroll right", "mouse:scrollright")),
+        ],
         shortcuts: [
             ShortcutPreset("Command palette", "shift+cmd+p"),
             ShortcutPreset("Quick open", "cmd+p"),
@@ -363,6 +565,20 @@ public enum PresetLibrary {
     static let browser = AppPreset(
         id: "browser", name: "Chrome / Safari", category: "Work",
         bundleIDs: ["com.google.Chrome", "com.apple.Safari", "company.thebrowser.Browser"],
+                knobs: [
+            KnobPreset("Scroll",
+                       ccw: ShortcutPreset("Scroll down", "mouse:wheeldown"),
+                       press: ShortcutPreset("Middle click", "mouse:middle"),
+                       cw: ShortcutPreset("Scroll up", "mouse:wheelup")),
+            KnobPreset("Tabs",
+                       ccw: ShortcutPreset("Previous tab", "ctrl+shift+tab"),
+                       press: ShortcutPreset("New tab", "cmd+t"),
+                       cw: ShortcutPreset("Next tab", "ctrl+tab")),
+            KnobPreset("Zoom",
+                       ccw: ShortcutPreset("Zoom out", "cmd+-"),
+                       press: ShortcutPreset("Actual size", "cmd+0"),
+                       cw: ShortcutPreset("Zoom in", "cmd+=")),
+        ],
         shortcuts: [
             ShortcutPreset("New tab", "cmd+t"),
             ShortcutPreset("Close tab", "cmd+w"),
@@ -382,6 +598,20 @@ public enum PresetLibrary {
     static let excel = AppPreset(
         id: "excel", name: "Excel", category: "Work",
         bundleIDs: ["com.microsoft.Excel"],
+                knobs: [
+            KnobPreset("Scroll",
+                       ccw: ShortcutPreset("Scroll down", "mouse:wheeldown"),
+                       press: ShortcutPreset("Middle click", "mouse:middle"),
+                       cw: ShortcutPreset("Scroll up", "mouse:wheelup")),
+            KnobPreset("Pan",
+                       ccw: ShortcutPreset("Scroll left", "mouse:scrollleft"),
+                       press: ShortcutPreset("Click", "mouse:left"),
+                       cw: ShortcutPreset("Scroll right", "mouse:scrollright")),
+            KnobPreset("History",
+                       ccw: ShortcutPreset("Undo", "cmd+z"),
+                       press: ShortcutPreset("Edit cell", "f2"),
+                       cw: ShortcutPreset("Redo", "shift+cmd+z")),
+        ],
         shortcuts: [
             ShortcutPreset("Edit cell", "f2"),
             ShortcutPreset("Autosum", "shift+cmd+t"),
@@ -399,6 +629,16 @@ public enum PresetLibrary {
         id: "obs", name: "OBS Studio", category: "Work",
         note: "OBS has no default shortcuts. Set these in Settings > Hotkeys first.",
         bundleIDs: ["com.obsproject.obs-studio"],
+                knobs: [
+            KnobPreset("Scenes",
+                       ccw: ShortcutPreset("Scene 1", "f1"),
+                       press: ShortcutPreset("Start / stop recording", "f8"),
+                       cw: ShortcutPreset("Scene 2", "f2")),
+            KnobPreset("Volume",
+                       ccw: ShortcutPreset("Volume down", "media:volumedown"),
+                       press: ShortcutPreset("Mute", "media:mute"),
+                       cw: ShortcutPreset("Volume up", "media:volumeup")),
+        ],
         shortcuts: [
             ShortcutPreset("Start / stop stream", "f7"),
             ShortcutPreset("Start / stop recording", "f8"),
@@ -416,9 +656,24 @@ extension Profile {
     /// keys first and then knob slots, in catalog order.
     public init(filling preset: AppPreset, layer: Int, geometry: Geometry) throws {
         self.init(name: preset.name, geometry: geometry)
-        let slots = Wire.slotIndices(for: geometry)
-        for (slot, shortcut) in zip(slots, preset.shortcuts) {
-            set(try KeyAction.parse(shortcut.action), key: slot, layer: layer)
+
+        // Keys take the flat shortcut list, in order.
+        for (offset, shortcut) in preset.shortcuts.prefix(geometry.keyCount).enumerated() {
+            set(try KeyAction.parse(shortcut.action), key: offset + 1, layer: layer,
+                label: shortcut.label)
         }
+
+        // Knobs get their own definitions, so a turn is always something worth
+        // repeating rather than whatever fell off the end of the key list.
+        for (index, knob) in preset.knobs.prefix(geometry.knobCount).enumerated() {
+            let base = Wire.knobSlotBase + index * Wire.slotsPerKnob
+            for (offset, shortcut) in knob.inOrder.enumerated() {
+                set(try KeyAction.parse(shortcut.action), key: base + offset,
+                    layer: layer, label: shortcut.label)
+            }
+        }
+
+        setSource(LayerSource(layer: layer, appID: preset.id, appName: preset.name),
+                  layer: layer)
     }
 }

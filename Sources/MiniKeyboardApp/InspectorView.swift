@@ -54,6 +54,15 @@ struct InspectorView: View {
             }
             .font(.callout)
             .foregroundStyle(.secondary)
+
+            if let purpose = model.purpose(for: binding),
+               let source = model.layerSource() {
+                Text("\(purpose) — \(source.appName)")
+                    .font(.caption)
+                    .padding(.horizontal, 7).padding(.vertical, 3)
+                    .background(Theme.brass.opacity(0.14), in: Capsule())
+                    .padding(.top, 2)
+            }
         }
     }
 

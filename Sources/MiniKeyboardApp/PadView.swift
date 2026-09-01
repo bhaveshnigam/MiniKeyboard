@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 import MiniKeyboardKit
 
 /// The pad, drawn to match the geometry the device reported.
@@ -28,6 +29,9 @@ struct PadView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 22) {
+            if let source = model.layerSource() {
+                LayerSourceBadge(source: source) { model.clearLayerSource() }
+            }
             LazyVGrid(
                 columns: Array(repeating: GridItem(.flexible(minimum: 74),
                                                    spacing: Theme.capSpacing),
@@ -37,6 +41,7 @@ struct PadView: View {
                 ForEach(keyBindings) { binding in
                     KeyCapView(binding: binding,
                                action: model.action(for: binding),
+                               purpose: model.purpose(for: binding),
                                isSelected: model.selection == binding.index)
                         .onTapGesture { model.selection = binding.index }
                 }
@@ -66,6 +71,8 @@ struct PadView: View {
 struct KeyCapView: View {
     let binding: PadBinding
     let action: KeyAction
+    /// What the binding is for, when a preset supplied it.
+    var purpose: String?
     let isSelected: Bool
     var compact = false
 
@@ -118,17 +125,33 @@ struct KeyCapView: View {
     }
 
     private var legend: some View {
-        VStack(spacing: 2) {
+        VStack(spacing: 1) {
             Text(binding.label)
                 .font(.system(size: 9, weight: .semibold, design: .monospaced))
                 .foregroundStyle(Theme.legend.opacity(0.45))
-            Text(action.displayLabel)
-                .font(.system(size: compact ? 10.5 : 12,
-                              weight: .medium))
-                .lineLimit(2)
-                .minimumScaleFactor(0.55)
-                .multilineTextAlignment(.center)
-                .foregroundStyle(isEmpty ? Theme.legend.opacity(0.3) : Theme.legend)
+
+            // What it does leads; the shortcut that does it follows, because
+            // "Mute" is the thing you scan the pad for, not "shift+cmd+m".
+            if let purpose, !isEmpty {
+                Text(purpose)
+                    .font(.system(size: compact ? 10 : 11.5, weight: .semibold))
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.55)
+                    .multilineTextAlignment(.center)
+                    .foregroundStyle(Theme.legend)
+                Text(action.displayLabel)
+                    .font(.system(size: compact ? 8.5 : 9.5, weight: .medium))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.6)
+                    .foregroundStyle(Theme.legend.opacity(0.5))
+            } else {
+                Text(action.displayLabel)
+                    .font(.system(size: compact ? 10.5 : 12, weight: .medium))
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.55)
+                    .multilineTextAlignment(.center)
+                    .foregroundStyle(isEmpty ? Theme.legend.opacity(0.3) : Theme.legend)
+            }
         }
     }
 }
@@ -161,6 +184,11 @@ struct DialView: View {
     }
     private func select(_ dir: PadBinding.Kind.Knob) {
         if let b = binding(dir) { model.selection = b.index }
+    }
+
+    private func purpose(_ dir: PadBinding.Kind.Knob) -> String? {
+        guard let b = binding(dir) else { return nil }
+        return model.purpose(for: b)
     }
 
     private func symbol(_ dir: PadBinding.Kind.Knob) -> String {
@@ -249,7 +277,8 @@ struct DialView: View {
                         .font(.system(size: 8, weight: .bold))
                         .frame(width: 11)
                         .foregroundStyle(selected ? Theme.brass : .secondary)
-                    Text(a.displayLabel)
+                    // Prefer what the binding is for, when a preset said so.
+                    Text(purpose(dir) ?? a.displayLabel)
                         .font(.system(size: 10.5, weight: .medium))
                         .lineLimit(1)
                         .truncationMode(.middle)
@@ -265,8 +294,47 @@ struct DialView: View {
                 .contentShape(RoundedRectangle(cornerRadius: 5))
                 .onTapGesture { select(dir) }
                 // The tooltip carries the token you would type or store.
-                .help(a == .none ? "Unassigned" : a.displayName)
+                // The tooltip carries the token you would type or store.
+                .help(a == .none ? "Unassigned"
+                                 : (purpose(dir).map { "\($0) — \(a.displayName)" }
+                                    ?? a.displayName))
             }
+        }
+    }
+}
+
+
+/// Says whose shortcuts a layer is carrying.
+struct LayerSourceBadge: View {
+    let source: Profile.LayerSource
+    let clear: () -> Void
+
+    private var preset: AppPreset? { PresetLibrary.app(id: source.appID) }
+
+    var body: some View {
+        HStack(spacing: 8) {
+            if let preset, let url = AppAvailability.location(of: preset) {
+                Image(nsImage: NSWorkspace.shared.icon(forFile: url.path))
+                    .resizable().frame(width: 16, height: 16)
+            } else {
+                Image(systemName: "sparkles.rectangle.stack")
+                    .font(.caption)
+                    .foregroundStyle(Theme.brass)
+            }
+            Text("\(source.appName) shortcuts")
+                .font(.caption.weight(.medium))
+            Spacer(minLength: 0)
+            Button("Clear labels", action: clear)
+                .buttonStyle(.plain)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .help("Keep the bindings, drop the preset labelling")
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(Theme.brass.opacity(0.12), in: RoundedRectangle(cornerRadius: 7))
+        .overlay {
+            RoundedRectangle(cornerRadius: 7).strokeBorder(Theme.brass.opacity(0.35))
         }
     }
 }

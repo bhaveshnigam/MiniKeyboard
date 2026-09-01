@@ -26,6 +26,7 @@ USAGE
     presets                       List built-in shortcut sets
     presets <app>                 Show one app's shortcuts
     preset <app> [--layer N]      Write an app's shortcuts to a layer
+    preset <app> --export         Print it as a profile instead of writing
     cheatsheet [app]              Print a Markdown cheatsheet
 
   Offline
@@ -90,7 +91,7 @@ do {
         print("\nMedia (prefix with media:):")
         print("  " + MediaUsage.byName.keys.sorted().joined(separator: " "))
         print("\nMouse (prefix with mouse:):")
-        print("  " + (MouseUsage.buttons.keys.sorted() + ["wheelup", "wheeldown"])
+        print("  " + (MouseUsage.buttons.keys.sorted() + MouseUsage.wheelNames)
                         .joined(separator: " "))
         print("\nModifiers:")
         print("  ctrl shift alt/option cmd/win  (prefix with r for right-hand)")
@@ -188,13 +189,24 @@ do {
             print("\(app.name)  (\(app.category))")
             if let note = app.note { print("  Note: \(note)") }
             print()
-            let width = app.shortcuts.map(\.label.count).max() ?? 0
-            for s in app.shortcuts {
+            let all = app.shortcuts + app.knobs.flatMap(\.inOrder)
+            let width = all.map(\.label.count).max() ?? 0
+            func row(_ s: ShortcutPreset, prefix: String = "  ") {
                 let action = (try? KeyAction.parse(s.action))?.displayLabel ?? s.action
-                print("  \(s.label.padding(toLength: width, withPad: " ", startingAt: 0))"
+                print("\(prefix)\(s.label.padding(toLength: width, withPad: " ", startingAt: 0))"
                       + "   \(action)   [\(s.action)]")
             }
-            print("\n  \(app.shortcuts.count) shortcuts. "
+            print("Keys")
+            for s in app.shortcuts { row(s) }
+            if !app.knobs.isEmpty {
+                for (i, knob) in app.knobs.enumerated() {
+                    print("\nKnob \(i + 1) — \(knob.name)")
+                    row(knob.counterClockwise, prefix: "  \u{21BA} ")
+                    row(knob.press,            prefix: "  \u{25CF} ")
+                    row(knob.clockwise,        prefix: "  \u{21BB} ")
+                }
+            }
+            print("\n  \(app.shortcuts.count) keys, \(app.knobs.count) knobs. "
                   + "Write them with: minikeyboard preset \(app.id)")
         } else {
             for category in PresetLibrary.categories {
@@ -203,7 +215,8 @@ do {
                     let id = app.id.padding(toLength: 12, withPad: " ", startingAt: 0)
                     let mark = app.isUniversal ? " "
                              : (AppAvailability.location(of: app) != nil ? "\u{2713}" : " ")
-                    print(" \(mark) \(id) \(app.name)  (\(app.shortcuts.count) shortcuts)")
+                    print(" \(mark) \(id) \(app.name)"
+                          + "  (\(app.shortcuts.count) keys, \(app.knobs.count) knobs)")
                 }
                 print()
             }
@@ -214,9 +227,19 @@ do {
     case "preset":
         guard let name = args.first else { fail("preset needs an app id") }
         args.removeFirst()
+        var exporting = false
+        if let i = args.firstIndex(of: "--export") { exporting = true; args.remove(at: i) }
         let layer = flagValue("--layer", in: &args, default: 0)
         guard let app = PresetLibrary.app(id: name) else {
             fail("no preset named \"\(name)\". Run `minikeyboard presets`.")
+        }
+        // Exporting needs no hardware, so a profile can be prepared anywhere.
+        if exporting {
+            let geo = (try? MacroPad.connect().queryGeometry())
+                ?? Geometry(keyCount: 12, knobCount: 2)
+            let profile = try Profile(filling: app, layer: layer, geometry: geo)
+            print(try profile.jsonString())
+            break
         }
         let pad = try MacroPad.connect()
         defer { pad.close() }
@@ -226,10 +249,13 @@ do {
         print("Wrote \(profile.assignments.count) \(app.name) shortcuts "
               + "to layer \(layer + 1).")
         if let note = app.note { print("Note: \(note)") }
-        if app.shortcuts.count > geo.totalBindings {
-            print("The pad has \(geo.totalBindings) bindings, so "
-                  + "\(app.shortcuts.count - geo.totalBindings) shortcut(s) "
-                  + "did not fit.")
+        if app.shortcuts.count > geo.keyCount {
+            print("The pad has \(geo.keyCount) keys, so "
+                  + "\(app.shortcuts.count - geo.keyCount) key shortcut(s) did not fit.")
+        }
+        if app.knobs.count > geo.knobCount {
+            print("The pad has \(geo.knobCount) knob(s), so "
+                  + "\(app.knobs.count - geo.knobCount) knob set(s) did not fit.")
         }
 
     case "cheatsheet":
@@ -249,11 +275,17 @@ do {
             for app in inCategory {
                 print("### \(app.name)\n")
                 if let note = app.note { print("> \(note)\n") }
-                print("| Action | Shortcut | Binding |")
-                print("|---|---|---|")
-                for s in app.shortcuts {
+                func line(_ s: ShortcutPreset, _ where_: String) {
                     let shown = (try? KeyAction.parse(s.action))?.displayLabel ?? s.action
-                    print("| \(s.label) | \(shown) | `\(s.action)` |")
+                    print("| \(where_) | \(s.label) | \(shown) | `\(s.action)` |")
+                }
+                print("| Where | Action | Shortcut | Binding |")
+                print("|---|---|---|---|")
+                for (i, s) in app.shortcuts.enumerated() { line(s, "Key \(i + 1)") }
+                for (i, knob) in app.knobs.enumerated() {
+                    line(knob.counterClockwise, "Knob \(i + 1) left")
+                    line(knob.press,            "Knob \(i + 1) press")
+                    line(knob.clockwise,        "Knob \(i + 1) right")
                 }
                 print()
             }

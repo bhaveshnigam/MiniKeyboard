@@ -103,11 +103,27 @@ match the hardware.
   or hit **Record…** and press the shortcut on your Mac keyboard.
 - **Presets** — ready-made shortcut sets for common apps.
 - **Lighting** — effect and colour for the current layer, written immediately.
-- **Apply** (⌘S) — writes the profile to the pad. **Read** (⌘D) pulls it back.
-- The title bar shows **Unsaved changes** when the profile differs from the pad.
+- **Clear Layer** — empties the current layer, after a confirmation.
+- **Auto-save** — on by default. Every edit is written to the pad shortly after
+  you stop, so **Apply** (⌘S) is only there to force a write early. Turn it off
+  and the status bar goes back to reporting **Unsaved changes**.
+- **Read** (⌘D) pulls the pad's current layout back in.
 
-Nothing reaches the hardware until you press Apply, except lighting — that is
-written as you click, because you judge it by looking at it.
+The pad is the only place a layout lives, so leaving edits unwritten is the
+surprising behaviour, not the safe one — hence auto-save on by default. Lighting
+has always been written as you click, because you judge it by looking at it.
+
+### Seeing what a key is for
+
+Fill a layer from a preset and the keys show **what the shortcut does**, not just
+the chord: "Toggle mute" with `⇧⌘M` underneath it. A badge above the pad names
+whose shortcuts these are, and **Clear labels** drops the labelling while keeping
+the bindings.
+
+Labels live in the profile, not on the pad — the firmware has nowhere to put
+them. Reading from the device keeps a label only where the binding still matches,
+and rebinding a key clears its label rather than leaving "Mute" on something that
+no longer mutes.
 
 ## The CLI
 
@@ -153,6 +169,7 @@ Key indices are **1-based**. Layers on the command line are **0-based**
 | Macro | `"cmd+c, cmd+v"` | Up to 18 steps; quote it |
 | Media | `media:volumeup`, `media:playpause` | 16-bit HID Consumer usages |
 | Mouse | `mouse:left`, `mouse:wheelup` | left, right, middle, wheelup, wheeldown |
+| Horizontal scroll | `mouse:scrollleft`, `mouse:scrollright` | Shift plus wheel, which is how macOS pans |
 | Modified wheel | `ctrl+mouse:wheelup` | |
 | Clear | `none` | |
 
@@ -189,7 +206,9 @@ Plain JSON, diffable, safe in a dotfiles repo.
 | `layer` | 0, 1 or 2 |
 | `action` | Any form from [Actions](#actions) |
 | `delay` | Optional, 0–6000 ms between macro keystrokes |
+| `label` | Optional, what the binding is for — presets supply it |
 | `leds` | Optional, one entry per layer |
+| `layerSources` | Optional, which preset filled each layer |
 
 Every field except `key`, `layer` and `action` is optional, and profiles written
 before a feature existed still load.
@@ -215,10 +234,31 @@ Google Meet, Discord, Lightroom Classic, Photoshop, Final Cut Pro, DaVinci
 Resolve, Figma, VS Code, browsers, Excel and OBS.
 
 ```sh
-minikeyboard presets                     # ✓ marks apps found on this Mac
-minikeyboard presets zoom
-minikeyboard preset lightroom --layer 1  # fill a whole layer
+minikeyboard presets                       # ✓ marks apps found on this Mac
+minikeyboard presets lightroom             # keys and knobs for one app
+minikeyboard preset lightroom --layer 1    # fill a whole layer
+minikeyboard preset teams --export > t.json  # no hardware needed
 ```
+
+### Knobs
+
+Presets define their knobs separately from their keys, because a rotary encoder
+needs something worth repeating. Filling knobs from the same flat list as the
+keys is how you end up with "Search" on a knob turn.
+
+| App | Knob 1 | Knob 2 | Knob 3 |
+|---|---|---|---|
+| macOS | Volume | Brightness | Scroll |
+| Lightroom Classic | Photos — prev / pick / next | Scroll | Filmstrip — pan |
+| Photoshop | Brush size | Zoom | Scroll |
+| Final Cut, Resolve | Playhead — frame step | Timeline zoom | Scroll |
+| Zoom, Teams, Meet, Discord | Volume, press to mute | Scroll | Pan |
+| Slack | Unread channels | Scroll | Volume |
+| Browsers | Scroll | Tabs | Zoom |
+| VS Code | Scroll | Editors | Pan |
+
+A test asserts every rotation is a repeatable action, so a one-shot command
+cannot end up on a turn.
 
 In the app, **Presets** opens a browser. Apps installed on this Mac are listed
 first with their own icons; the rest stay available, since you might be setting

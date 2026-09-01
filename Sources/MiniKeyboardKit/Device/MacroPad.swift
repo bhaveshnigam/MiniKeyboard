@@ -56,12 +56,27 @@ public final class MacroPad {
     }
 
     /// Reads the entire current configuration into a profile.
-    public func readProfile() throws -> Profile {
+    ///
+    /// Pass the profile already on screen as `mergingLabelsFrom` to keep preset
+    /// labels for keys whose binding still matches. The pad cannot store a
+    /// label, so without this a read would discard every one of them.
+    public func readProfile(mergingLabelsFrom previous: Profile? = nil) throws -> Profile {
         let geo = try geometry ?? queryGeometry()
         var profile = Profile(geometry: geo)
         for layer in 0..<Wire.layerCount {
             for (index, entry) in try readLayer(layer) {
-                profile.set(entry.action, key: index, layer: layer, delay: entry.delay)
+                // Only carry a label over when the binding is unchanged,
+                // otherwise it would describe something the key no longer does.
+                let label = previous?.action(key: index, layer: layer) == entry.action
+                    ? previous?.label(key: index, layer: layer)
+                    : nil
+                profile.set(entry.action, key: index, layer: layer,
+                            delay: entry.delay, label: label)
+            }
+            // A layer keeps its provenance only if every labelled key survived.
+            if let source = previous?.source(layer: layer),
+               profile.assignments.contains(where: { $0.layer == layer && $0.label != nil }) {
+                profile.setSource(source, layer: layer)
             }
         }
         profile.assignments.sort { ($0.layer, $0.key) < ($1.layer, $1.key) }
@@ -72,14 +87,25 @@ public final class MacroPad {
     ///
     /// Mirrors `Widget::HID_write`: records are sent per layer, then a
     /// `FD FE FF` commit closes each layer that had any change.
+    ///
+    /// - Parameter clearingOmitted: when true, slots the profile does not
+    ///   mention are cleared, so the pad ends up matching the profile exactly.
+    ///   When false the write is additive, which is what a one-key update wants
+    ///   — otherwise programming a single key would wipe every other one.
     public func apply(_ profile: Profile,
+                      clearingOmitted: Bool = false,
                       progress: ((Int, Int) -> Void)? = nil) throws {
         let work = profile.assignments
         var done = 0
+        let allSlots = clearingOmitted ? Wire.slotIndices(for: geometry ?? profile.geometry)
+                                       : []
         for layer in 0..<Wire.layerCount {
             let inLayer = work.filter { $0.layer == layer }
             let led = profile.led(layer: layer)
-            guard !inLayer.isEmpty || led != nil else { continue }
+            let omitted = allSlots.filter { slot in
+                !inLayer.contains { $0.key == slot }
+            }
+            guard !inLayer.isEmpty || led != nil || !omitted.isEmpty else { continue }
             // The backlight record occupies slot 0, so it goes out first.
             if let led {
                 try transport.write(Packet.led(led, layer: layer))
@@ -96,6 +122,12 @@ public final class MacroPad {
                 }
                 done += 1
                 progress?(done, work.count)
+            }
+            // Anything the profile dropped has to be cleared explicitly, or the
+            // pad simply keeps whatever it already had in that slot.
+            for slot in omitted {
+                try transport.write(Packet.programKey(keyIndex: UInt8(slot),
+                                                      layer: layer, action: .none))
             }
             try transport.write(Packet.commit())
         }

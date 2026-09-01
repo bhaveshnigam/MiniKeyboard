@@ -94,6 +94,13 @@ public enum KeyAction: Sendable, Hashable, Codable {
             switch name {
             case "wheelup":   return .mouse(modifiers: mods, buttons: 0, wheel: 1)
             case "wheeldown": return .mouse(modifiers: mods, buttons: 0, wheel: -1)
+            // The pad has no horizontal wheel. macOS pans when Shift is held
+            // with a vertical one, which is what the original offers as
+            // "Shift+Mouse Up/Down", so these are aliases for that.
+            case "scrollright":
+                return .mouse(modifiers: mods.union(.leftShift), buttons: 0, wheel: 1)
+            case "scrollleft":
+                return .mouse(modifiers: mods.union(.leftShift), buttons: 0, wheel: -1)
             default:
                 guard let b = MouseUsage.buttons[name] else {
                     throw ActionParseError.unknownMouseAction(name)
@@ -125,6 +132,10 @@ public enum KeyAction: Sendable, Hashable, Codable {
         case .media(let code):
             return "media:" + MediaUsage.name(for: code)
         case .mouse(let mods, let buttons, let wheel):
+            // Shift plus a wheel is how horizontal scrolling is expressed.
+            if wheel != 0, mods == .leftShift {
+                return wheel > 0 ? "mouse:scrollright" : "mouse:scrollleft"
+            }
             let prefix = mods.displayPrefix
             if wheel > 0 { return prefix + "mouse:wheelup" }
             if wheel < 0 { return prefix + "mouse:wheeldown" }

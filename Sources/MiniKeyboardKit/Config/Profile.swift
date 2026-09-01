@@ -14,12 +14,36 @@ public struct Profile: Codable, Sendable, Equatable {
         /// Inter-keystroke delay in milliseconds, for macros that need one.
         /// Absent means the firmware default.
         public var delay: Int?
+        /// What the binding is for, in the application's own words — "Mute"
+        /// rather than "shift+cmd+m". Presets supply it.
+        ///
+        /// The pad cannot store this, so it lives in the profile only. A layer
+        /// read straight off the device comes back without labels.
+        public var label: String?
 
-        public init(key: Int, layer: Int, action: KeyAction, delay: Int? = nil) {
+        public init(key: Int, layer: Int, action: KeyAction,
+                    delay: Int? = nil, label: String? = nil) {
             self.key = key
             self.layer = layer
             self.action = action
             self.delay = delay
+            self.label = label
+        }
+    }
+
+    /// Which preset a layer was filled from, so the UI can say whose shortcuts
+    /// these are.
+    public struct LayerSource: Codable, Sendable, Equatable {
+        public var layer: Int
+        /// Preset id, e.g. "teams".
+        public var appID: String
+        /// Display name, e.g. "Microsoft Teams".
+        public var appName: String
+
+        public init(layer: Int, appID: String, appName: String) {
+            self.layer = layer
+            self.appID = appID
+            self.appName = appName
         }
     }
 
@@ -42,15 +66,35 @@ public struct Profile: Codable, Sendable, Equatable {
     public var assignments: [Assignment]
     /// Per-layer backlight. Absent means "leave the pad's current setting".
     public var leds: [LedAssignment]
+    /// Which preset filled each layer, where one did.
+    public var layerSources: [LayerSource]
 
     public init(name: String = "Untitled",
                 geometry: Geometry? = nil,
                 assignments: [Assignment] = [],
-                leds: [LedAssignment] = []) {
+                leds: [LedAssignment] = [],
+                layerSources: [LayerSource] = []) {
         self.name = name
         self.geometry = geometry
         self.assignments = assignments
         self.leds = leds
+        self.layerSources = layerSources
+    }
+
+    public func source(layer: Int) -> LayerSource? {
+        layerSources.first { $0.layer == layer }
+    }
+
+    public mutating func setSource(_ source: LayerSource?, layer: Int) {
+        layerSources.removeAll { $0.layer == layer }
+        if let source {
+            layerSources.append(source)
+            layerSources.sort { $0.layer < $1.layer }
+        }
+    }
+
+    public func label(key: Int, layer: Int) -> String? {
+        assignments.first { $0.key == key && $0.layer == layer }?.label
     }
 
     /// Gives every layer its default colour, so the pad shows which one is live.
@@ -87,18 +131,29 @@ public struct Profile: Codable, Sendable, Equatable {
         assignments.first { $0.key == key && $0.layer == layer }?.delay
     }
 
-    public mutating func set(_ action: KeyAction, key: Int, layer: Int, delay: Int? = nil) {
+    public mutating func set(_ action: KeyAction, key: Int, layer: Int,
+                             delay: Int? = nil, label: String? = nil) {
         if let i = assignments.firstIndex(where: { $0.key == key && $0.layer == layer }) {
             if action == .none {
                 assignments.remove(at: i)
             } else {
+                let changed = assignments[i].action != action
                 assignments[i].action = action
                 // Only overwrite the delay when one is supplied, so setting an
                 // action does not silently discard a configured delay.
                 if delay != nil { assignments[i].delay = delay }
+                // A label describes a specific binding, so it must not outlive
+                // it. Rebinding a key without supplying a new label clears it
+                // rather than leaving "Mute" on something that no longer mutes.
+                if let label {
+                    assignments[i].label = label
+                } else if changed {
+                    assignments[i].label = nil
+                }
             }
         } else if action != .none {
-            assignments.append(Assignment(key: key, layer: layer, action: action, delay: delay))
+            assignments.append(Assignment(key: key, layer: layer, action: action,
+                                          delay: delay, label: label))
         }
     }
 
@@ -112,15 +167,18 @@ public struct Profile: Codable, Sendable, Equatable {
 
     /// Actions round-trip through their textual form, so the JSON reads like
     /// `"action": "ctrl+shift+a"` rather than a tagged enum blob.
-    private enum CodingKeys: String, CodingKey { case name, geometry, assignments, leds }
+    private enum CodingKeys: String, CodingKey {
+        case name, geometry, assignments, leds, layerSources
+    }
 
     public init(from decoder: any Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         name = try c.decodeIfPresent(String.self, forKey: .name) ?? "Untitled"
         geometry = try c.decodeIfPresent(Geometry.self, forKey: .geometry)
         assignments = try c.decodeIfPresent([Assignment].self, forKey: .assignments) ?? []
-        // Older profiles predate backlight support.
+        // Older profiles predate backlight and preset labelling.
         leds = try c.decodeIfPresent([LedAssignment].self, forKey: .leds) ?? []
+        layerSources = try c.decodeIfPresent([LayerSource].self, forKey: .layerSources) ?? []
     }
 
     public static func load(from url: URL) throws -> Profile {

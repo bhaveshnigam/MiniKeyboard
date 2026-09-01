@@ -86,7 +86,9 @@ struct PresetBrowser: View {
             AppIcon(preset: app, size: 38)
             VStack(alignment: .leading, spacing: 2) {
                 Text(app.name).font(.title3.weight(.semibold))
-                Text("\(app.shortcuts.count) shortcuts")
+                Text(app.knobs.isEmpty
+                 ? "\(app.shortcuts.count) shortcuts"
+                 : "\(app.shortcuts.count) keys · \(app.knobs.count) knobs")
                     .font(.caption).foregroundStyle(.secondary)
             }
             Spacer()
@@ -112,11 +114,24 @@ struct PresetBrowser: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .background(Theme.brass.opacity(0.08))
                 }
+                SectionHeader("Keys")
                 ForEach(Array(app.shortcuts.enumerated()), id: \.element.id) { index, s in
-                    ShortcutRow(shortcut: s,
+                    ShortcutRow(shortcut: s, glyph: "\(index + 1)",
                                 isEven: index.isMultiple(of: 2),
                                 canAssign: model.selection != nil) {
                         model.assign(s)
+                    }
+                }
+                ForEach(Array(app.knobs.enumerated()), id: \.offset) { index, knob in
+                    SectionHeader("Knob \(index + 1) — \(knob.name)")
+                    ForEach(Array(zip(["arrow.counterclockwise", "circle.fill",
+                                       "arrow.clockwise"], knob.inOrder)), id: \.1.id) {
+                        symbol, s in
+                        ShortcutRow(shortcut: s, symbol: symbol,
+                                    isEven: false,
+                                    canAssign: model.selection != nil) {
+                            model.assign(s)
+                        }
                     }
                 }
             }
@@ -153,12 +168,35 @@ private struct AppRow: View {
             Text("\(preset.shortcuts.count)")
                 .font(.caption2.monospacedDigit())
                 .foregroundStyle(.tertiary)
+            if !preset.knobs.isEmpty {
+                Image(systemName: "dial.min")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+                    .help("\(preset.knobs.count) knob set(s)")
+            }
         }
+    }
+}
+
+private struct SectionHeader: View {
+    let title: String
+    init(_ title: String) { self.title = title }
+
+    var body: some View {
+        Text(title)
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(.secondary)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 16)
+            .padding(.top, 12).padding(.bottom, 4)
     }
 }
 
 private struct ShortcutRow: View {
     let shortcut: ShortcutPreset
+    /// A number for a key, or an SF Symbol for a knob direction.
+    var glyph: String?
+    var symbol: String?
     let isEven: Bool
     let canAssign: Bool
     let assign: () -> Void
@@ -167,6 +205,16 @@ private struct ShortcutRow: View {
 
     var body: some View {
         HStack(spacing: 10) {
+            Group {
+                if let symbol {
+                    Image(systemName: symbol).font(.system(size: 8, weight: .bold))
+                } else if let glyph {
+                    Text(glyph).font(.system(size: 9, design: .monospaced))
+                }
+            }
+            .frame(width: 14)
+            .foregroundStyle(.tertiary)
+
             Text(shortcut.label)
                 .lineLimit(1)
             Spacer(minLength: 8)

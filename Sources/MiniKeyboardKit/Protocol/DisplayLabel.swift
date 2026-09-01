@@ -98,6 +98,9 @@ extension KeyAction {
         case .media(let usage):
             return MediaUsage.label(for: usage)
         case .mouse(let mods, let buttons, let wheel):
+            if wheel != 0, mods == .leftShift {
+                return wheel > 0 ? "Scroll Right" : "Scroll Left"
+            }
             let prefix = mods.displayGlyphs
             if wheel > 0 { return prefix + "Wheel Up" }
             if wheel < 0 { return prefix + "Wheel Down" }

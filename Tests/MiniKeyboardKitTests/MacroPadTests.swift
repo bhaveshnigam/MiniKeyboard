@@ -137,3 +137,45 @@ struct MacroPadTests {
         #expect(records.allSatisfy { $0[9] == 0 }, "step count must be zero when cleared")
     }
 }
+
+@Suite("Replacing a layout")
+struct ClearingApplyTests {
+
+    private func geometryResponse(keys: Int, knobs: Int) -> [UInt8] {
+        var r = [UInt8](repeating: 0, count: 64)
+        r[2] = UInt8(keys); r[3] = UInt8(knobs)
+        return r
+    }
+
+    /// Removing a key from the profile has to reach the pad, or the old
+    /// binding just stays there.
+    @Test("clearingOmitted wipes slots the profile does not mention")
+    func clearsOmitted() throws {
+        let mock = MockTransport()
+        mock.responses = [geometryResponse(keys: 3, knobs: 0)]
+        let pad = MacroPad(transport: mock)
+        try pad.queryGeometry()
+
+        var p = Profile(geometry: Geometry(keyCount: 3, knobCount: 0))
+        p.set(try KeyAction.parse("a"), key: 1, layer: 0)
+        try pad.apply(p, clearingOmitted: true)
+
+        let records = mock.payloads.dropFirst()
+            .filter { $0[0] == Wire.Command.program && $0[1] != 0xFE }
+        let cleared = records.filter { $0[9] == 0 }
+        // Layer 1 clears keys 2 and 3; layers 2 and 3 clear all three.
+        #expect(cleared.count == 2 + 3 + 3)
+        #expect(records.contains { $0[1] == 1 && $0[2] == 1 && $0[9] == 1 })
+    }
+
+    @Test("The additive default leaves other keys alone")
+    func additiveByDefault() throws {
+        let mock = MockTransport()
+        let pad = MacroPad(transport: mock)
+        var p = Profile()
+        p.set(try KeyAction.parse("a"), key: 1, layer: 0)
+        try pad.apply(p)
+        // One record plus one commit; nothing else is touched.
+        #expect(mock.written.count == 2)
+    }
+}

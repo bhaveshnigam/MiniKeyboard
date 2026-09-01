@@ -144,4 +144,6 @@ public enum MouseUsage {
     public static let buttonNames: [UInt8: String] = [
         0x01: "left", 0x02: "right", 0x04: "middle",
     ]
+    /// Wheel and pan pseudo-actions, for listings.
+    public static let wheelNames = ["wheelup", "wheeldown", "scrollleft", "scrollright"]
 }

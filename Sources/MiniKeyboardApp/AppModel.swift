@@ -43,6 +43,10 @@ struct PadBinding: Identifiable, Hashable {
     }
 }
 
+/// Defaults key for the auto-save toggle. Free-standing because `@Observable`
+/// cannot reference `Self` from a stored property's initializer.
+let autoSaveDefaultsKey = "autoSaveEnabled"
+
 @Observable
 @MainActor
 final class AppModel {
@@ -58,6 +62,22 @@ final class AppModel {
     var selection: Int?
     var busyMessage: String?
     var toast: String?
+    var confirmClearLayer = false
+
+    /// Writes every change straight to the pad, the way lighting already does.
+    /// On by default; the pad is the only place a layout lives, so leaving
+    /// edits unwritten is the surprising behaviour, not the safe one.
+    var autoSave: Bool = UserDefaults.standard.object(forKey: autoSaveDefaultsKey)
+        as? Bool ?? true {
+        didSet {
+            UserDefaults.standard.set(autoSave, forKey: autoSaveDefaultsKey)
+            if autoSave && hasUnsavedChanges { scheduleAutoSave() }
+        }
+    }
+
+    /// True while a debounced auto-save is pending or running.
+    private(set) var isAutoSaving = false
+    private var autoSaveTask: Task<Void, Never>?
 
     /// The profile as it exists on the pad, so edits can be reported as unsaved.
     private var deviceProfile: Profile?
@@ -105,6 +125,36 @@ final class AppModel {
 
     func setAction(_ action: KeyAction, for binding: PadBinding) {
         profile.set(action, key: binding.index, layer: selectedLayer)
+        scheduleAutoSave()
+    }
+
+    /// Which preset filled a layer, where one did.
+    func layerSource(_ layer: Int? = nil) -> Profile.LayerSource? {
+        profile.source(layer: layer ?? selectedLayer)
+    }
+
+    /// What a binding is for, in the preset's own words.
+    func purpose(for binding: PadBinding) -> String? {
+        profile.label(key: binding.index, layer: selectedLayer)
+    }
+
+    /// Empties the current layer: every key and knob direction, plus any
+    /// preset labelling. Other layers are untouched.
+    func clearLayer() {
+        profile.assignments.removeAll { $0.layer == selectedLayer }
+        profile.setSource(nil, layer: selectedLayer)
+        toast = "Cleared layer \(selectedLayer + 1)."
+        scheduleAutoSave()
+    }
+
+    /// Drops the preset labelling from this layer, leaving the bindings alone.
+    func clearLayerSource() {
+        profile.setSource(nil, layer: selectedLayer)
+        for i in profile.assignments.indices
+        where profile.assignments[i].layer == selectedLayer {
+            profile.assignments[i].label = nil
+        }
+        // Labels are local to the profile, so the pad needs no write here.
     }
 
     func delay(for binding: PadBinding) -> Int? {
@@ -113,9 +163,35 @@ final class AppModel {
 
     func setDelay(_ delay: Int?, for binding: PadBinding) {
         profile.setDelay(delay, key: binding.index, layer: selectedLayer)
+        scheduleAutoSave()
     }
 
     // MARK: - Lighting
+
+    /// Coalesces a burst of edits — filling a layer touches eighteen keys —
+    /// into one write shortly after the user stops.
+    func scheduleAutoSave() {
+        guard autoSave, pad != nil else { return }
+        autoSaveTask?.cancel()
+        autoSaveTask = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(600))
+            guard !Task.isCancelled, let self else { return }
+            self.writeNow()
+        }
+    }
+
+    /// Writes the profile to the pad, replacing what is there.
+    private func writeNow() {
+        guard let pad, hasUnsavedChanges else { return }
+        isAutoSaving = true
+        defer { isAutoSaving = false }
+        do {
+            try pad.apply(profile, clearingOmitted: true)
+            deviceProfile = profile
+        } catch {
+            status = .error("\(error)")
+        }
+    }
 
     /// Changes the effect, keeping the current colour.
     func setLed(mode: Int) {
@@ -159,13 +235,15 @@ final class AppModel {
 
     // MARK: - Presets
 
-    /// Puts one shortcut on the selected key.
+    /// Puts one shortcut on the selected key, keeping what it is for.
     func assign(_ shortcut: ShortcutPreset) {
         guard let index = selection,
               let binding = bindings.first(where: { $0.index == index }),
               let action = shortcut.parsed else { return }
-        setAction(action, for: binding)
-        toast = "\(binding.accessibilityLabel) -> \(action.displayLabel)"
+        profile.set(action, key: binding.index, layer: selectedLayer,
+                    label: shortcut.label)
+        toast = "\(binding.accessibilityLabel) -> \(shortcut.label)"
+        scheduleAutoSave()
     }
 
     /// Lays a whole preset across the current layer, keys first then knobs.
@@ -174,8 +252,12 @@ final class AppModel {
         let slots = Wire.slotIndices(for: geo)
         for (slot, shortcut) in zip(slots, preset.shortcuts) {
             guard let action = shortcut.parsed else { continue }
-            profile.set(action, key: slot, layer: selectedLayer)
+            profile.set(action, key: slot, layer: selectedLayer, label: shortcut.label)
         }
+        profile.setSource(Profile.LayerSource(layer: selectedLayer,
+                                              appID: preset.id, appName: preset.name),
+                          layer: selectedLayer)
+        scheduleAutoSave()
         let placed = min(slots.count, preset.shortcuts.count)
         let dropped = preset.shortcuts.count - placed
         toast = dropped > 0
@@ -213,7 +295,7 @@ final class AppModel {
         Task {
             defer { busyMessage = nil }
             do {
-                var read = try pad.readProfile()
+                var read = try pad.readProfile(mergingLabelsFrom: profile)
                 read.name = profile.name
                 profile = read
                 deviceProfile = read
@@ -230,7 +312,7 @@ final class AppModel {
         Task {
             defer { busyMessage = nil }
             do {
-                try pad.apply(profile)
+                try pad.apply(profile, clearingOmitted: true)
                 deviceProfile = profile
                 toast = "Wrote \(profile.assignments.count) binding(s) to the pad."
             } catch {
@@ -261,6 +343,7 @@ final class AppModel {
         do {
             profile = try Profile.load(from: url)
             toast = "Loaded \(url.lastPathComponent)."
+            scheduleAutoSave()
         } catch {
             status = .error("\(error)")
         }
