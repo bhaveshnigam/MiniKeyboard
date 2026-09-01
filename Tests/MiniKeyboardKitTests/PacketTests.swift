@@ -334,3 +334,41 @@ struct LedTests {
         #expect(mock.payloads[2].prefix(3).elementsEqual([0xFD, 0xFE, 0xFF]))
     }
 }
+
+@Suite("Layer colour coding")
+struct LayerColorTests {
+
+    @Test("Each layer gets a distinct solid colour")
+    func distinctColours() {
+        let settings = (0..<Wire.layerCount).map { LedSetting.defaultForLayer($0) }
+        #expect(Set(settings.map(\.color)).count == Wire.layerCount)
+        #expect(settings.allSatisfy { $0.mode == 1 })   // all Solid
+        #expect(settings.allSatisfy { $0.usesColor })
+    }
+
+    @Test("Applying colour coding fills every layer")
+    func applyToProfile() {
+        var p = Profile()
+        #expect(!p.isLayerColorCoded)
+        p.applyLayerColorCoding()
+        #expect(p.isLayerColorCoded)
+        #expect(p.leds.count == Wire.layerCount)
+        for layer in 0..<Wire.layerCount {
+            #expect(p.led(layer: layer) == LedSetting.defaultForLayer(layer))
+        }
+    }
+
+    @Test("The driver writes one record plus commit per layer")
+    func driverWrites() throws {
+        let mock = MockTransport()
+        let pad = MacroPad(transport: mock)
+        try pad.applyLayerColorCoding()
+
+        #expect(mock.written.count == Wire.layerCount * 2)   // record + commit each
+        let records = mock.payloads.filter { $0[0] == Wire.Command.led }
+        #expect(records.count == Wire.layerCount)
+        // Each record names its own layer and carries the LED mode byte.
+        #expect(records.map { $0[2] } == [1, 2, 3])
+        #expect(records.allSatisfy { $0[3] == KeyMode.led.rawValue })
+    }
+}

@@ -15,6 +15,8 @@ USAGE
                                           Set the backlight. Mode is a number
                                           0-5 or a name; colour is 1-7 or a name
   minikeyboard led --list                 Show the modes and colours
+  minikeyboard led-layers                 Give each layer its own colour, so the
+                                          pad shows which layer is live
   minikeyboard validate <profile.json>    Parse a profile without touching hardware
   minikeyboard keys                       List every key name the parser accepts
   minikeyboard presets                    List built-in shortcut sets
@@ -315,6 +317,16 @@ do {
         try pad.setLed(setting, layer: ledLayer)
         print("Backlight on layer \(ledLayer + 1): \(setting.describe) "
               + "(byte 0x\(String(format: "%02X", setting.packed)))")
+
+    case "led-layers":
+        let pad = try MacroPad.connect()
+        defer { pad.close() }
+        try pad.queryGeometry()
+        try pad.applyLayerColorCoding()
+        print("Colour-coded the layers:")
+        for layer in 0..<Wire.layerCount {
+            print("  Layer \(layer + 1): \(LedSetting.defaultForLayer(layer).describe)")
+        }
 
     case "clear":
         let pad = try MacroPad.connect()

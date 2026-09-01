@@ -15,7 +15,8 @@ rewrite: Swift, SwiftUI, IOKit, no third-party dependencies, 904 KB.
 - Edits all three layers, every key and every knob direction
 - Chords (`cmd+c`), macros up to 18 steps (`cmd+c, cmd+v`), media keys, mouse buttons and wheel
 - Records a shortcut by pressing it on your Mac keyboard
-- Backlight control: six effects, seven colours, set per layer
+- Backlight control: six effects, seven colours, set per layer — including
+  one-click colour coding so the pad shows which layer is live
 - Ready-made shortcut sets for Slack, Teams, Zoom, Lightroom Classic, Photoshop,
   Final Cut, VS Code and more — sorted so apps you actually have come first
 - Saves layouts as readable JSON you can keep in a dotfiles repo
@@ -49,6 +50,7 @@ minikeyboard set 3 media:playpause --layer 1
 minikeyboard clear                     # wipe every key on every layer
 minikeyboard led solid --color green   # backlight; also `led --list`
 minikeyboard led reactive --layer 1    # light only the key being pressed
+minikeyboard led-layers                # green/blue/red for layers 1/2/3
 minikeyboard validate mypad.json       # check a file without touching hardware
 minikeyboard keys                      # list every accepted key name
 minikeyboard doctor                    # dump raw HID traffic, for debugging
@@ -160,6 +162,16 @@ byte 11 packs the effect in the low nibble and the colour in the high nibble —
 | | | 7 | Purple |
 
 Off and Rainbow ignore the colour.
+
+### Colour-coded layers
+
+The layer is switched on the pad itself and nothing on screen reflects it, so
+which layer is live is the one bit of state that is genuinely easy to lose track
+of. `minikeyboard led-layers`, or the button in the app, gives each layer its own
+solid colour — green, blue, red — which turns the backlight into a layer
+indicator. Green, blue and red are the most separable of the seven available and
+differ in lightness as well as hue, so they stay distinguishable for the common
+forms of colour blindness.
 
 ### What the firmware does not expose
 

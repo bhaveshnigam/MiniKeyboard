@@ -125,6 +125,18 @@ final class AppModel {
         profile.setLed(nil, layer: selectedLayer)
     }
 
+    /// Gives every layer its own colour and writes all three straight away.
+    func applyLayerColorCoding() {
+        profile.applyLayerColorCoding()
+        guard let pad else { return }
+        do {
+            try pad.applyLayerColorCoding()
+            toast = "Layer 1 green, layer 2 blue, layer 3 red."
+        } catch {
+            status = .error("\(error)")
+        }
+    }
+
     /// Lighting is judged by looking at it, so write it to the pad immediately
     /// rather than waiting for the next Apply.
     private func applyLed(_ setting: LedSetting) {

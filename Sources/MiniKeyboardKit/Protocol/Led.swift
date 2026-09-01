@@ -73,6 +73,23 @@ public struct LedSetting: Equatable, Sendable, Codable, Hashable {
     /// Off is mode 0 in every firmware seen so far.
     public static let off = LedSetting(mode: 0, color: 5)
 
+    /// One solid colour per layer, so the pad tells you which layer is live.
+    ///
+    /// The pad has no other way to show that — the layer is switched on the
+    /// device and nothing on screen reflects it — so this is the state worth
+    /// spending the backlight on. Green, blue and red are the three most
+    /// separable of the seven available, including for the most common forms
+    /// of colour blindness, where they differ in lightness as well as hue.
+    public static let layerDefaults: [LedSetting] = [
+        LedSetting(mode: 1, color: 4),   // Layer 1 — Green
+        LedSetting(mode: 1, color: 6),   // Layer 2 — Blue
+        LedSetting(mode: 1, color: 1),   // Layer 3 — Red
+    ]
+
+    public static func defaultForLayer(_ layer: Int) -> LedSetting {
+        layerDefaults.indices.contains(layer) ? layerDefaults[layer] : layerDefaults[0]
+    }
+
     public var describe: String {
         usesColor ? "\(modeName), \(colorName)" : modeName
     }

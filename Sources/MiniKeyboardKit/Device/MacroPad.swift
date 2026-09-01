@@ -98,6 +98,13 @@ public final class MacroPad {
         try transport.write(Packet.commit())
     }
 
+    /// Gives each layer its default colour in one pass.
+    public func applyLayerColorCoding() throws {
+        for layer in 0..<Wire.layerCount {
+            try setLed(LedSetting.defaultForLayer(layer), layer: layer)
+        }
+    }
+
     /// Clears every key on every layer.
     public func clearAll() throws {
         let geometry = self.geometry ?? Geometry(keyCount: Wire.keySlotCount, knobCount: 3)

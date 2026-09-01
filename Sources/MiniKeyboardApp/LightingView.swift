@@ -74,6 +74,21 @@ struct LightingView: View {
                 }
             }
 
+            Divider().padding(.vertical, 2)
+
+            HStack(spacing: 8) {
+                Button("Colour-code layers") { model.applyLayerColorCoding() }
+                    .controlSize(.small)
+                    .help("Green, blue and red for layers 1, 2 and 3, so the pad "
+                          + "shows which layer is live")
+                if model.profile.isLayerColorCoded {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundStyle(Theme.brass)
+                        .font(.caption)
+                }
+                Spacer(minLength: 0)
+            }
+
             Text(setting.map { "Layer \(model.selectedLayer + 1): \($0.describe)" }
                  ?? "Not set for this layer.")
                 .font(.caption)

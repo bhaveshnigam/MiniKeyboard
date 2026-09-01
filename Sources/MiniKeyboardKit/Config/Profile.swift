@@ -49,6 +49,20 @@ public struct Profile: Codable, Sendable, Equatable {
         self.leds = leds
     }
 
+    /// Gives every layer its default colour, so the pad shows which one is live.
+    public mutating func applyLayerColorCoding() {
+        for layer in 0..<Wire.layerCount {
+            setLed(LedSetting.defaultForLayer(layer), layer: layer)
+        }
+    }
+
+    /// True when every layer already carries its default colour.
+    public var isLayerColorCoded: Bool {
+        (0..<Wire.layerCount).allSatisfy {
+            led(layer: $0) == LedSetting.defaultForLayer($0)
+        }
+    }
+
     public func led(layer: Int) -> LedSetting? {
         leds.first { $0.layer == layer }?.setting
     }
