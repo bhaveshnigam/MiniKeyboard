@@ -296,3 +296,34 @@ struct PresetMatcherTests {
         #expect(profile.source(layer: 0)?.inferred == false)
     }
 }
+
+@Suite("Preset lighting")
+struct PresetLightingTests {
+
+    @Test("Every preset names a valid colour and lights solid")
+    func validColours() {
+        for app in PresetLibrary.apps {
+            #expect(LedSetting.colorRange.contains(app.color), "\(app.name)")
+            #expect(app.lighting.mode == 1)          // Solid
+            #expect(app.lighting.usesColor)
+        }
+    }
+
+    @Test("Filling a layer sets its backlight too")
+    func fillSetsLighting() throws {
+        let geo = Geometry(keyCount: 12, knobCount: 2)
+        for preset in [PresetLibrary.slack, PresetLibrary.excel, PresetLibrary.obs] {
+            let profile = try Profile(filling: preset, layer: 1, geometry: geo)
+            #expect(profile.led(layer: 1) == preset.lighting)
+            #expect(profile.led(layer: 0) == nil)   // only the layer being filled
+        }
+    }
+
+    @Test("Colours differ between apps you would run side by side")
+    func neighboursDiffer() {
+        // A meeting app and an editor should not light the pad the same way.
+        #expect(PresetLibrary.zoom.color != PresetLibrary.excel.color)
+        #expect(PresetLibrary.slack.color != PresetLibrary.vscode.color)
+        #expect(PresetLibrary.lightroomClassic.color != PresetLibrary.obs.color)
+    }
+}

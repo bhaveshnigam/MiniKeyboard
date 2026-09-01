@@ -12,7 +12,9 @@ struct LightingView: View {
 
     private var setting: LedSetting? { model.profile.led(layer: model.selectedLayer) }
 
-    private static let swatches: [Int: Color] = [
+    static func swatch(_ color: Int) -> Color { swatches[color] ?? .gray }
+
+    static let swatches: [Int: Color] = [
         1: Color(red: 0.93, green: 0.20, blue: 0.20),   // Red
         2: Color(red: 0.98, green: 0.55, blue: 0.14),   // Orange
         3: Color(red: 0.97, green: 0.83, blue: 0.20),   // Yellow
@@ -55,7 +57,7 @@ struct LightingView: View {
                     ForEach(LedSetting.colorRange, id: \.self) { c in
                         let isSelected = setting?.color == c
                         Circle()
-                            .fill(Self.swatches[c] ?? .gray)
+                            .fill(Self.swatch(c))
                             .frame(width: 20, height: 20)
                             .overlay {
                                 Circle().strokeBorder(

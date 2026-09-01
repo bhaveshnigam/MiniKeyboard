@@ -92,6 +92,12 @@ struct PresetBrowser: View {
                     .font(.caption).foregroundStyle(.secondary)
             }
             Spacer()
+            HStack(spacing: 5) {
+                Circle().fill(LightingView.swatch(app.color)).frame(width: 9, height: 9)
+                Text(LedSetting.colorNames[app.color] ?? "")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            .help("Filling this layer also sets the backlight")
             if !app.isUniversal && AppAvailability.location(of: app) == nil {
                 Text("Not installed")
                     .font(.caption)
@@ -165,6 +171,10 @@ private struct AppRow: View {
             AppIcon(preset: preset, size: 18)
             Text(preset.name).lineLimit(1)
             Spacer(minLength: 4)
+            Circle()
+                .fill(LightingView.swatch(preset.color))
+                .frame(width: 7, height: 7)
+                .help("Sets the backlight to \(LedSetting.colorNames[preset.color] ?? "")")
             Text("\(preset.shortcuts.count)")
                 .font(.caption2.monospacedDigit())
                 .foregroundStyle(.tertiary)

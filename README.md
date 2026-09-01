@@ -292,6 +292,13 @@ keys is how you end up with "Search" on a knob turn.
 A test asserts every rotation is a repeatable action, so a one-shot command
 cannot end up on a turn.
 
+### Colour
+
+Each preset also carries a backlight colour, picked to match the app's own
+branding — Slack purple, Excel green, VS Code blue, OBS red. Filling a layer sets
+it, so the pad says which app the layer is for without you reading a single
+keycap.
+
 In the app, **Presets** opens a browser. Apps installed on this Mac are listed
 first with their own icons; the rest stay available, since you might be setting
 up a pad for another machine. Detection asks LaunchServices, with a name-match

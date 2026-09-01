@@ -209,6 +209,7 @@ do {
                     row(knob.clockwise,        prefix: "  \u{21BB} ")
                 }
             }
+            print("\nBacklight  \(app.lighting.describe)")
             print("\n  \(app.shortcuts.count) keys, \(app.knobs.count) knobs. "
                   + "Write them with: minikeyboard preset \(app.id)")
         } else {
@@ -250,7 +251,7 @@ do {
         let profile = try Profile(filling: app, layer: layer, geometry: geo)
         try pad.apply(profile)
         print("Wrote \(profile.assignments.count) \(app.name) shortcuts "
-              + "to layer \(layer + 1).")
+              + "to layer \(layer + 1), backlight \(app.lighting.describe).")
         if let note = app.note { print("Note: \(note)") }
         if app.shortcuts.count > geo.keyCount {
             print("The pad has \(geo.keyCount) keys, so "

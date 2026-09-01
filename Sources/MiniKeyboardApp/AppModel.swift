@@ -265,6 +265,8 @@ final class AppModel {
         profile.setSource(Profile.LayerSource(layer: selectedLayer,
                                               appID: preset.id, appName: preset.name),
                           layer: selectedLayer)
+        // Lighting is written as it changes, so set it through the same path.
+        applyLed(preset.lighting)
         scheduleAutoSave()
         let placed = min(slots.count, preset.shortcuts.count)
         let dropped = preset.shortcuts.count - placed
