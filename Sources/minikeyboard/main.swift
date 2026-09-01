@@ -13,6 +13,10 @@ USAGE
   minikeyboard clear                      Clear every key on every layer
   minikeyboard validate <profile.json>    Parse a profile without touching hardware
   minikeyboard keys                       List every key name the parser accepts
+  minikeyboard presets                    List built-in shortcut sets
+  minikeyboard presets <app>              Show one app's shortcuts
+  minikeyboard preset <app> [--layer N]   Write an app's shortcuts to the pad
+  minikeyboard cheatsheet [app]           Print a Markdown cheatsheet
 
 ACTIONS
   ctrl+shift+a          a chord
@@ -22,6 +26,9 @@ ACTIONS
   none                  clear the key
 
 EXAMPLES
+  minikeyboard presets zoom
+  minikeyboard preset lightroom --layer 1
+  minikeyboard cheatsheet > CHEATSHEET.md
   minikeyboard set 1 cmd+c
   minikeyboard set 3 "media:playpause" --layer 1
   minikeyboard read > mypad.json && minikeyboard apply mypad.json
@@ -101,6 +108,85 @@ do {
             }
         }
 
+    case "presets":
+        if let name = args.first {
+            guard let app = PresetLibrary.app(id: name) else {
+                fail("no preset named \"\(name)\". Run `minikeyboard presets`.")
+            }
+            print("\(app.name)  (\(app.category))")
+            if let note = app.note { print("  Note: \(note)") }
+            print()
+            let width = app.shortcuts.map(\.label.count).max() ?? 0
+            for s in app.shortcuts {
+                let action = (try? KeyAction.parse(s.action))?.displayLabel ?? s.action
+                print("  \(s.label.padding(toLength: width, withPad: " ", startingAt: 0))"
+                      + "   \(action)   [\(s.action)]")
+            }
+            print("\n  \(app.shortcuts.count) shortcuts. "
+                  + "Write them with: minikeyboard preset \(app.id)")
+        } else {
+            for category in PresetLibrary.categories {
+                print(category)
+                for app in AppAvailability.sorted(PresetLibrary.apps(in: category)) {
+                    let id = app.id.padding(toLength: 12, withPad: " ", startingAt: 0)
+                    let mark = app.isUniversal ? " "
+                             : (AppAvailability.location(of: app) != nil ? "\u{2713}" : " ")
+                    print(" \(mark) \(id) \(app.name)  (\(app.shortcuts.count) shortcuts)")
+                }
+                print()
+            }
+            print("\u{2713} marks an app found on this Mac.")
+            print("Show one with: minikeyboard presets <id>")
+        }
+
+    case "preset":
+        guard let name = args.first else { fail("preset needs an app id") }
+        args.removeFirst()
+        let layer = flagValue("--layer", in: &args, default: 0)
+        guard let app = PresetLibrary.app(id: name) else {
+            fail("no preset named \"\(name)\". Run `minikeyboard presets`.")
+        }
+        let pad = try MacroPad.connect()
+        defer { pad.close() }
+        let geo = try pad.queryGeometry()
+        let profile = try Profile(filling: app, layer: layer, geometry: geo)
+        try pad.apply(profile)
+        print("Wrote \(profile.assignments.count) \(app.name) shortcuts "
+              + "to layer \(layer + 1).")
+        if let note = app.note { print("Note: \(note)") }
+        if app.shortcuts.count > geo.totalBindings {
+            print("The pad has \(geo.totalBindings) bindings, so "
+                  + "\(app.shortcuts.count - geo.totalBindings) shortcut(s) "
+                  + "did not fit.")
+        }
+
+    case "cheatsheet":
+        let selected = args.first.flatMap { PresetLibrary.app(id: $0) }
+        if args.first != nil && selected == nil {
+            fail("no preset named \"\(args[0])\". Run `minikeyboard presets`.")
+        }
+        let apps = selected.map { [$0] } ?? PresetLibrary.apps
+        print("# Macro pad shortcut cheatsheet\n")
+        print("Bindings you can program with `minikeyboard set` or paste into a profile.")
+        print("Shortcuts are macOS defaults; apps let you rebind them, so check anything")
+        print("that does not work.\n")
+        for category in PresetLibrary.categories {
+            let inCategory = apps.filter { $0.category == category }
+            guard !inCategory.isEmpty else { continue }
+            print("## \(category)\n")
+            for app in inCategory {
+                print("### \(app.name)\n")
+                if let note = app.note { print("> \(note)\n") }
+                print("| Action | Shortcut | Binding |")
+                print("|---|---|---|")
+                for s in app.shortcuts {
+                    let shown = (try? KeyAction.parse(s.action))?.displayLabel ?? s.action
+                    print("| \(s.label) | \(shown) | `\(s.action)` |")
+                }
+                print()
+            }
+        }
+
     case "list":
         let devices = IOKitTransport.discoverAll()
         if devices.isEmpty {
@@ -129,7 +215,8 @@ do {
         let profile = try Profile.load(from: URL(fileURLWithPath: path))
         print("OK — \(profile.assignments.count) assignment(s) across \(Wire.layerCount) layers")
         for a in profile.assignments.sorted(by: { ($0.layer, $0.key) < ($1.layer, $1.key) }) {
-            print("  layer \(a.layer) key \(a.key): \(a.action.displayName)")
+            print("  layer \(a.layer) key \(a.key): \(a.action.displayLabel)"
+                  + "  [\(a.action.displayName)]")
         }
 
     case "apply":
@@ -155,7 +242,7 @@ do {
         var profile = Profile()
         profile.set(action, key: key, layer: layer)
         try pad.apply(profile)
-        print("Key \(key) on layer \(layer) -> \(action.displayName)")
+        print("Key \(key) on layer \(layer) -> \(action.displayLabel)")
 
     case "clear":
         let pad = try MacroPad.connect()

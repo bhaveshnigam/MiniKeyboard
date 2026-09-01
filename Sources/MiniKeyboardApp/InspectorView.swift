@@ -41,12 +41,18 @@ struct InspectorView: View {
     // MARK: - Sections
 
     private func header(_ binding: Binding) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
+        VStack(alignment: .leading, spacing: 3) {
             Text(binding.accessibilityLabel)
                 .font(.title3.weight(.semibold))
-            Text("Layer \(model.selectedLayer + 1)")
-                .font(.callout)
-                .foregroundStyle(.secondary)
+            HStack(spacing: 6) {
+                Text("Layer \(model.selectedLayer + 1)")
+                Text("·")
+                Text(model.action(for: binding).displayLabel)
+                    .foregroundStyle(model.action(for: binding) == .none
+                                     ? .secondary : Theme.brass)
+            }
+            .font(.callout)
+            .foregroundStyle(.secondary)
         }
     }
 

@@ -15,6 +15,8 @@ rewrite: Swift, SwiftUI, IOKit, no third-party dependencies, 904 KB.
 - Edits all three layers, every key and every knob direction
 - Chords (`cmd+c`), macros up to 18 steps (`cmd+c, cmd+v`), media keys, mouse buttons and wheel
 - Records a shortcut by pressing it on your Mac keyboard
+- Ready-made shortcut sets for Slack, Teams, Zoom, Lightroom Classic, Photoshop,
+  Final Cut, VS Code and more — sorted so apps you actually have come first
 - Saves layouts as readable JSON you can keep in a dotfiles repo
 - Ships as both an app and a CLI
 
@@ -48,6 +50,28 @@ minikeyboard validate mypad.json       # check a file without touching hardware
 minikeyboard keys                      # list every accepted key name
 minikeyboard doctor                    # dump raw HID traffic, for debugging
 ```
+
+### Presets
+
+```sh
+minikeyboard presets                   # list built-in sets, ✓ marks installed apps
+minikeyboard presets zoom              # show one app's shortcuts
+minikeyboard preset lightroom --layer 1  # write a whole set to a layer
+minikeyboard cheatsheet > CHEATSHEET.md  # generate a Markdown guide
+```
+
+[docs/CHEATSHEET.md](docs/CHEATSHEET.md) is the generated guide, covering every
+built-in set.
+
+In the app, **Presets** opens a browser: apps installed on this Mac are listed
+first with their own icons, and everything else stays available — you might be
+setting up a pad for another machine. Assign one shortcut to the selected key,
+or fill the whole layer at once.
+
+Shortcuts are macOS defaults at the time of writing. Apps let people rebind
+their own, and vendors change defaults between versions, so treat a preset as a
+starting point. `PresetLibrary` is a plain Swift table if you want to add your
+own, and a test asserts every entry parses.
 
 ### Actions
 
@@ -122,10 +146,10 @@ wheel delta at 11.
 ## Development
 
 ```
-Sources/MiniKeyboardKit/   protocol, IOKit transport, profiles — no UI
+Sources/MiniKeyboardKit/   protocol, IOKit transport, profiles, presets — no UI
 Sources/minikeyboard/      CLI
 Sources/MiniKeyboardApp/   SwiftUI app
-Tests/                     30 tests, none needing a device
+Tests/                     37 tests, none needing a device
 ```
 
 Device access sits behind a `Transport` protocol, so the driver is tested

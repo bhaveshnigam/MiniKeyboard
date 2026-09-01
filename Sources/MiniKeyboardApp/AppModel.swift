@@ -107,6 +107,32 @@ final class AppModel {
         profile.set(action, key: binding.index, layer: selectedLayer)
     }
 
+    // MARK: - Presets
+
+    /// Puts one shortcut on the selected key.
+    func assign(_ shortcut: ShortcutPreset) {
+        guard let index = selection,
+              let binding = bindings.first(where: { $0.index == index }),
+              let action = shortcut.parsed else { return }
+        setAction(action, for: binding)
+        toast = "\(binding.accessibilityLabel) -> \(action.displayLabel)"
+    }
+
+    /// Lays a whole preset across the current layer, keys first then knobs.
+    func fillLayer(with preset: AppPreset) {
+        guard let geo = geometry else { return }
+        let slots = Wire.slotIndices(for: geo)
+        for (slot, shortcut) in zip(slots, preset.shortcuts) {
+            guard let action = shortcut.parsed else { continue }
+            profile.set(action, key: slot, layer: selectedLayer)
+        }
+        let placed = min(slots.count, preset.shortcuts.count)
+        let dropped = preset.shortcuts.count - placed
+        toast = dropped > 0
+            ? "Placed \(placed) \(preset.name) shortcuts; \(dropped) did not fit."
+            : "Placed \(placed) \(preset.name) shortcuts on layer \(selectedLayer + 1)."
+    }
+
     // MARK: - Device
 
     func connect() {

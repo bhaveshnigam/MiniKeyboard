@@ -115,9 +115,9 @@ struct KeyCapView: View {
             Text(binding.label)
                 .font(.system(size: 9, weight: .semibold, design: .monospaced))
                 .foregroundStyle(Theme.legend.opacity(0.45))
-            Text(isEmpty ? "—" : action.displayName)
-                .font(.system(size: compact ? 10 : 11.5,
-                              weight: .medium, design: .monospaced))
+            Text(action.displayLabel)
+                .font(.system(size: compact ? 10.5 : 12,
+                              weight: .medium))
                 .lineLimit(2)
                 .minimumScaleFactor(0.55)
                 .multilineTextAlignment(.center)
@@ -242,8 +242,8 @@ struct DialView: View {
                         .font(.system(size: 8, weight: .bold))
                         .frame(width: 11)
                         .foregroundStyle(selected ? Theme.brass : .secondary)
-                    Text(a == .none ? "—" : a.displayName)
-                        .font(.system(size: 10, weight: .medium, design: .monospaced))
+                    Text(a.displayLabel)
+                        .font(.system(size: 10.5, weight: .medium))
                         .lineLimit(1)
                         .truncationMode(.middle)
                         .foregroundStyle(a == .none ? .secondary : .primary)
@@ -257,6 +257,7 @@ struct DialView: View {
                 }
                 .contentShape(RoundedRectangle(cornerRadius: 5))
                 .onTapGesture { select(dir) }
+                // The tooltip carries the token you would type or store.
                 .help(a == .none ? "Unassigned" : a.displayName)
             }
         }

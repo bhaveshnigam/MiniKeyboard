@@ -6,6 +6,7 @@ struct ContentView: View {
     @Bindable var model: AppModel
     @State private var showingImporter = false
     @State private var showingExporter = false
+    @State private var showingPresets = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -47,6 +48,11 @@ struct ContentView: View {
                 }
                 .help("Save this profile as JSON")
 
+                Button { showingPresets = true } label: {
+                    Label("Presets", systemImage: "sparkles.rectangle.stack")
+                }
+                .help("Browse ready-made shortcut sets for common apps")
+
                 Spacer()
 
                 Button { model.readFromDevice() } label: {
@@ -62,6 +68,9 @@ struct ContentView: View {
                 .disabled(!model.isConnected)
                 .keyboardShortcut("s", modifiers: .command)
             }
+        }
+        .sheet(isPresented: $showingPresets) {
+            PresetBrowser(model: model)
         }
         .fileImporter(isPresented: $showingImporter,
                       allowedContentTypes: [.json]) { result in
