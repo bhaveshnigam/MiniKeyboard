@@ -5,40 +5,60 @@ let usage = """
 minikeyboard — configure CH57x-family USB macro pads natively on Apple Silicon
 
 USAGE
-  minikeyboard list                       Show connected pads and their geometry
-  minikeyboard read [--layer N]           Read the pad's current config as JSON
-  minikeyboard apply <profile.json>       Write a profile to the pad
-  minikeyboard set <key> <action> [--layer N] [--delay MS]
-                                          Program a single key. --delay sets the
-                                          gap between macro keystrokes (0-6000)
-  minikeyboard clear                      Clear every key on every layer
-  minikeyboard led <mode> [--color C] [--layer N]
-                                          Set the backlight. Mode is a number
-                                          0-5 or a name; colour is 1-7 or a name
-  minikeyboard led --list                 Show the modes and colours
-  minikeyboard led-layers                 Give each layer its own colour, so the
-                                          pad shows which layer is live
-  minikeyboard validate <profile.json>    Parse a profile without touching hardware
-  minikeyboard keys                       List every key name the parser accepts
-  minikeyboard presets                    List built-in shortcut sets
-  minikeyboard presets <app>              Show one app's shortcuts
-  minikeyboard preset <app> [--layer N]   Write an app's shortcuts to the pad
-  minikeyboard cheatsheet [app]           Print a Markdown cheatsheet
+  Device
+    list                          Show connected pads and their geometry
+    read [--layer N]              Read the pad's current config as JSON
+    apply <profile.json>          Write a profile to the pad
+    set <key> <action> [--layer N] [--delay MS]
+                                  Program one key. --delay is the gap between
+                                  macro keystrokes, 0-\(Wire.maxDelay) ms
+    clear                         Clear every key on every layer
+
+  Lighting
+    led <mode> [--color C] [--layer N]
+                                  Set the backlight. Mode is 0-5 or a name,
+                                  colour is 1-7 or a name
+    led --list                    Show every effect and colour
+    led-layers                    Give each layer its own colour, so the pad
+                                  shows which layer is live
+
+  Presets
+    presets                       List built-in shortcut sets
+    presets <app>                 Show one app's shortcuts
+    preset <app> [--layer N]      Write an app's shortcuts to a layer
+    cheatsheet [app]              Print a Markdown cheatsheet
+
+  Offline
+    validate <profile.json>       Parse a profile without touching hardware
+    keys                          List every key name the parser accepts
+
+  Diagnostics
+    doctor                        Show HID interfaces and dump raw traffic
+    variant [<keys> <knobs>]      Show or set the pad's declared model
+    raw <hex...> [--commit]       Send a raw report, for protocol work
 
 ACTIONS
   ctrl+shift+a          a chord
   "ctrl+c, ctrl+v"      a macro, up to \(Wire.maxMacroSteps) steps
   media:volumeup        consumer keys (see `minikeyboard keys`)
   mouse:left            mouse buttons; also mouse:wheelup / mouse:wheeldown
+  ctrl+mouse:wheelup    a modifier held with the wheel
   none                  clear the key
 
+  Modifiers are ctrl, shift, alt/option and cmd/win. Prefix with r for the
+  right-hand variant, as in rshift+a.
+
 EXAMPLES
+  minikeyboard read > mypad.json          # back up before experimenting
+  minikeyboard apply mypad.json           # and restore it
+  minikeyboard set 1 cmd+c
+  minikeyboard set 5 "cmd+c, cmd+v" --delay 200
+  minikeyboard set 3 media:playpause --layer 1
   minikeyboard presets zoom
   minikeyboard preset lightroom --layer 1
+  minikeyboard led solid --color green
+  minikeyboard led-layers
   minikeyboard cheatsheet > CHEATSHEET.md
-  minikeyboard set 1 cmd+c
-  minikeyboard set 3 "media:playpause" --layer 1
-  minikeyboard read > mypad.json && minikeyboard apply mypad.json
 """
 
 func fail(_ message: String) -> Never {
