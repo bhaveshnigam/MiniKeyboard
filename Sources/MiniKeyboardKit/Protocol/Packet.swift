@@ -74,12 +74,13 @@ public enum Packet {
             rec[Wire.Field.steps]     = UInt8(usage & 0xFF)
             rec[Wire.Field.steps + 1] = UInt8(usage >> 8)
 
-        case .mouse(let buttons, let wheel):
-            // The pad stores a 4-byte mouse payload — buttons, wheel, x, y —
-            // and puts its length in the count field rather than a step count.
-            rec[Wire.Field.stepCount] = 4
-            rec[Wire.Field.steps]     = buttons
-            rec[Wire.Field.steps + 1] = UInt8(bitPattern: wheel)
+        case .mouse(let mods, let buttons, let wheel):
+            // A mouse report: modifiers, buttons, x, y, wheel. The count field
+            // holds the payload length rather than a step count.
+            rec[Wire.Field.stepCount]     = 4
+            rec[Wire.Field.mouseModifiers] = mods.rawValue
+            rec[Wire.Field.mouseButtons]   = buttons
+            rec[Wire.Field.mouseWheel]     = UInt8(bitPattern: wheel)
         }
         return rec
     }
@@ -115,8 +116,14 @@ public enum Packet {
             return usage == 0 ? .none : .media(usage)
 
         case .mouse:
-            return .mouse(buttons: rec[Wire.Field.steps],
-                          wheel: Int8(bitPattern: rec[Wire.Field.steps + 1]))
+            guard rec.count > Wire.Field.mouseWheel else { return .none }
+            return .mouse(modifiers: Modifiers(rawValue: rec[Wire.Field.mouseModifiers]),
+                          buttons: rec[Wire.Field.mouseButtons],
+                          wheel: Int8(bitPattern: rec[Wire.Field.mouseWheel]))
+
+        case .led:
+            // Backlight records live in slot 0 and are not key bindings.
+            return .none
         }
     }
 

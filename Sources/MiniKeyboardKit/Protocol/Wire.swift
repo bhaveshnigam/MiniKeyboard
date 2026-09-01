@@ -53,6 +53,10 @@ public enum Wire {
         public static let setVariant: UInt8 = 0xFC
         /// Enter the firmware bootloader. Destructive — gated behind an explicit call.
         public static let bootloader: UInt8 = 0xEF
+        /// Backlight record, written to slot 0 of a layer.
+        public static let led: UInt8 = 0xFE
+        /// Sub-command that follows `led`.
+        public static let ledSub: UInt8 = 0xB0
     }
 
     /// Byte offsets within a 50-byte key record.
@@ -64,6 +68,10 @@ public enum Wire {
         public static let stepCount = 9
         /// First macro step. Step `n` is `(modifier: steps + 2n, usage: steps + 2n + 1)`.
         public static let steps = 10
+        /// Mouse records reuse the step area: modifiers, buttons, x, y, wheel.
+        public static let mouseModifiers = 10
+        public static let mouseButtons = 11
+        public static let mouseWheel = 14
     }
 }
 
@@ -86,4 +94,7 @@ public enum KeyMode: UInt8, Sendable, Codable, CaseIterable {
     case keyboard = 1
     case media = 2
     case mouse = 3
+    /// The backlight record. `on_tabWidget_currentChanged` sets this mode and
+    /// selects slot 0 when the RGB LED tab opens.
+    case led = 8
 }

@@ -51,8 +51,8 @@ public enum KeyAction: Sendable, Hashable, Codable {
     case keyboard([Chord])
     /// A consumer-page media control.
     case media(UInt16)
-    /// A mouse button bitmask and/or wheel delta.
-    case mouse(buttons: UInt8, wheel: Int8)
+    /// A mouse button and/or wheel delta, optionally with modifiers held.
+    case mouse(modifiers: Modifiers = [], buttons: UInt8, wheel: Int8)
 
     public var mode: KeyMode {
         switch self {
@@ -80,16 +80,25 @@ public enum KeyAction: Sendable, Hashable, Codable {
             return .media(code)
         }
 
-        if raw.lowercased().hasPrefix("mouse:") {
-            let name = String(raw.dropFirst("mouse:".count)).lowercased()
+        // A mouse action may be prefixed with modifiers: "ctrl+mouse:wheelup".
+        if let range = raw.lowercased().range(of: "mouse:") {
+            var mods: Modifiers = []
+            let prefix = String(raw[raw.startIndex..<range.lowerBound])
+            for token in prefix.split(separator: "+") where !token.isEmpty {
+                guard let m = Modifiers.named(String(token)) else {
+                    throw ActionParseError.unknownMouseAction(String(token))
+                }
+                mods.insert(m)
+            }
+            let name = String(raw[range.upperBound...]).lowercased()
             switch name {
-            case "wheelup":   return .mouse(buttons: 0, wheel: 1)
-            case "wheeldown": return .mouse(buttons: 0, wheel: -1)
+            case "wheelup":   return .mouse(modifiers: mods, buttons: 0, wheel: 1)
+            case "wheeldown": return .mouse(modifiers: mods, buttons: 0, wheel: -1)
             default:
                 guard let b = MouseUsage.buttons[name] else {
                     throw ActionParseError.unknownMouseAction(name)
                 }
-                return .mouse(buttons: b, wheel: 0)
+                return .mouse(modifiers: mods, buttons: b, wheel: 0)
             }
         }
 
@@ -115,10 +124,12 @@ public enum KeyAction: Sendable, Hashable, Codable {
             return chords.isEmpty ? "none" : chords.map(\.displayName).joined(separator: ", ")
         case .media(let code):
             return "media:" + MediaUsage.name(for: code)
-        case .mouse(let buttons, let wheel):
-            if wheel > 0 { return "mouse:wheelup" }
-            if wheel < 0 { return "mouse:wheeldown" }
-            return "mouse:" + (MouseUsage.buttonNames[buttons] ?? String(format: "0x%02X", buttons))
+        case .mouse(let mods, let buttons, let wheel):
+            let prefix = mods.displayPrefix
+            if wheel > 0 { return prefix + "mouse:wheelup" }
+            if wheel < 0 { return prefix + "mouse:wheeldown" }
+            return prefix + "mouse:"
+                 + (MouseUsage.buttonNames[buttons] ?? String(format: "0x%02X", buttons))
         }
     }
 }

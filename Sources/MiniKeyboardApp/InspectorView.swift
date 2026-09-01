@@ -9,7 +9,7 @@ struct InspectorView: View {
     @State private var parseError: String?
     @State private var isRecording = false
 
-    private var binding: Binding? {
+    private var binding: PadBinding? {
         model.bindings.first { $0.index == model.selection }
     }
 
@@ -40,7 +40,7 @@ struct InspectorView: View {
 
     // MARK: - Sections
 
-    private func header(_ binding: Binding) -> some View {
+    private func header(_ binding: PadBinding) -> some View {
         VStack(alignment: .leading, spacing: 3) {
             Text(binding.accessibilityLabel)
                 .font(.title3.weight(.semibold))
@@ -56,7 +56,7 @@ struct InspectorView: View {
         }
     }
 
-    private func editor(_ binding: Binding) -> some View {
+    private func editor(_ binding: PadBinding) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Action")
                 .font(.caption.weight(.semibold))
@@ -115,7 +115,7 @@ struct InspectorView: View {
         })
     }
 
-    private func presets(_ binding: Binding) -> some View {
+    private func presets(_ binding: PadBinding) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Common")
                 .font(.caption.weight(.semibold))
@@ -149,7 +149,7 @@ struct InspectorView: View {
         isRecording = false
     }
 
-    private func commit(_ binding: Binding) {
+    private func commit(_ binding: PadBinding) {
         do {
             let action = try KeyAction.parse(text)
             model.setAction(action, for: binding)
@@ -163,7 +163,7 @@ struct InspectorView: View {
 
 /// Captures one real key press from the Mac keyboard and turns it into a `Chord`.
 struct KeyRecorder: NSViewRepresentable {
-    @SwiftUI.Binding var isRecording: Bool
+    @Binding var isRecording: Bool
     let onCapture: (Chord) -> Void
 
     func makeNSView(context: Context) -> NSView { NSView() }

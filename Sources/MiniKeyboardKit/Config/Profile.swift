@@ -19,16 +19,46 @@ public struct Profile: Codable, Sendable, Equatable {
         }
     }
 
+    /// Backlight for one layer.
+    public struct LedAssignment: Codable, Sendable, Equatable {
+        public var layer: Int
+        public var mode: Int
+        public var color: Int
+
+        public init(layer: Int, setting: LedSetting) {
+            self.layer = layer
+            self.mode = setting.mode
+            self.color = setting.color
+        }
+        public var setting: LedSetting { LedSetting(mode: mode, color: color) }
+    }
+
     public var name: String
     public var geometry: Geometry?
     public var assignments: [Assignment]
+    /// Per-layer backlight. Absent means "leave the pad's current setting".
+    public var leds: [LedAssignment]
 
     public init(name: String = "Untitled",
                 geometry: Geometry? = nil,
-                assignments: [Assignment] = []) {
+                assignments: [Assignment] = [],
+                leds: [LedAssignment] = []) {
         self.name = name
         self.geometry = geometry
         self.assignments = assignments
+        self.leds = leds
+    }
+
+    public func led(layer: Int) -> LedSetting? {
+        leds.first { $0.layer == layer }?.setting
+    }
+
+    public mutating func setLed(_ setting: LedSetting?, layer: Int) {
+        leds.removeAll { $0.layer == layer }
+        if let setting {
+            leds.append(LedAssignment(layer: layer, setting: setting))
+            leds.sort { $0.layer < $1.layer }
+        }
     }
 
     public func action(key: Int, layer: Int) -> KeyAction {
@@ -51,7 +81,16 @@ public struct Profile: Codable, Sendable, Equatable {
 
     /// Actions round-trip through their textual form, so the JSON reads like
     /// `"action": "ctrl+shift+a"` rather than a tagged enum blob.
-    private enum CodingKeys: String, CodingKey { case name, geometry, assignments }
+    private enum CodingKeys: String, CodingKey { case name, geometry, assignments, leds }
+
+    public init(from decoder: any Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        name = try c.decodeIfPresent(String.self, forKey: .name) ?? "Untitled"
+        geometry = try c.decodeIfPresent(Geometry.self, forKey: .geometry)
+        assignments = try c.decodeIfPresent([Assignment].self, forKey: .assignments) ?? []
+        // Older profiles predate backlight support.
+        leds = try c.decodeIfPresent([LedAssignment].self, forKey: .leds) ?? []
+    }
 
     public static func load(from url: URL) throws -> Profile {
         try Profile.decoder.decode(Profile.self, from: Data(contentsOf: url))

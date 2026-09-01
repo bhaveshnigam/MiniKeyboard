@@ -75,7 +75,12 @@ public final class MacroPad {
         var done = 0
         for layer in 0..<Wire.layerCount {
             let inLayer = work.filter { $0.layer == layer }
-            guard !inLayer.isEmpty else { continue }
+            let led = profile.led(layer: layer)
+            guard !inLayer.isEmpty || led != nil else { continue }
+            // The backlight record occupies slot 0, so it goes out first.
+            if let led {
+                try transport.write(Packet.led(led, layer: layer))
+            }
             for assignment in inLayer.sorted(by: { $0.key < $1.key }) {
                 try transport.write(Packet.programKey(keyIndex: UInt8(assignment.key),
                                                       layer: layer,
@@ -85,6 +90,12 @@ public final class MacroPad {
             }
             try transport.write(Packet.commit())
         }
+    }
+
+    /// Sets the backlight for one layer and commits.
+    public func setLed(_ setting: LedSetting, layer: Int) throws {
+        try transport.write(Packet.led(setting, layer: layer))
+        try transport.write(Packet.commit())
     }
 
     /// Clears every key on every layer.

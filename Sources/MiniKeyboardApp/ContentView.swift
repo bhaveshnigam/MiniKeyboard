@@ -22,6 +22,7 @@ struct ContentView: View {
                         VStack(spacing: 16) {
                             LayerPicker(selection: $model.selectedLayer)
                             PadView(model: model)
+                            LightingView(model: model)
                             Spacer(minLength: 0)
                         }
                         .padding(20)
@@ -142,7 +143,7 @@ struct DotLabelStyle: LabelStyle {
 // MARK: - Layers
 
 struct LayerPicker: View {
-    @SwiftUI.Binding var selection: Int
+    @Binding var selection: Int
 
     var body: some View {
         Picker("Layer", selection: $selection) {

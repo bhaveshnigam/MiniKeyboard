@@ -104,17 +104,27 @@ struct PacketTests {
         #expect(calc[11] == 0x01)
     }
 
-    @Test("Mouse actions store a 4-byte payload")
+    /// Confirmed against the original app, which shows "Mouse LeftKey" for a
+    /// record whose byte 11 is 0x01.
+    @Test("Mouse records put buttons at 11 and the wheel at 14")
     func mouseEncoding() throws {
         let mouse = Packet.record(keyIndex: 2, layer: 0,
                                   action: try KeyAction.parse("mouse:left"))
         #expect(mouse[3] == 3)
         #expect(mouse[9] == 4)       // payload length, not a step count
-        #expect(mouse[10] == 0x01)
+        #expect(mouse[10] == 0)      // no modifiers
+        #expect(mouse[11] == 0x01)   // left button
+        #expect(mouse[14] == 0)      // no wheel
 
         let wheel = Packet.record(keyIndex: 2, layer: 0,
                                   action: try KeyAction.parse("mouse:wheeldown"))
-        #expect(Int8(bitPattern: wheel[11]) == -1)
+        #expect(wheel[11] == 0)
+        #expect(Int8(bitPattern: wheel[14]) == -1)
+
+        let modified = Packet.record(keyIndex: 2, layer: 0,
+                                     action: try KeyAction.parse("ctrl+mouse:wheelup"))
+        #expect(modified[10] == Modifiers.leftControl.rawValue)
+        #expect(Int8(bitPattern: modified[14]) == 1)
     }
 
     /// Captured from a live 12-key / 2-knob pad. These are the exact bytes the
@@ -137,8 +147,10 @@ struct PacketTests {
         #expect(decode("03 FA 11 01 02 00 00 00 00 00 01 E2 00") == .media(0x00E2))
         // knob 2 clockwise -> brightness up
         #expect(decode("03 FA 15 01 02 00 00 00 00 00 01 6F 00") == .media(0x006F))
-        // a mouse wheel binding
-        #expect(decode("03 FA 11 02 03 00 00 00 00 00 04 00 01") == .mouse(buttons: 0, wheel: 1))
+        // knob 1 press on layer 2 -> left click. The original app labels this
+        // exact record "Mouse LeftKey", which is what pinned the layout down.
+        #expect(decode("03 FA 11 02 03 00 00 00 00 00 04 00 01 00 00 00")
+                == .mouse(buttons: 0x01, wheel: 0))
     }
 
     @Test("Records read back from hardware identify their own slot")
@@ -160,7 +172,8 @@ struct PacketTests {
     @Test("Records round-trip through decode")
     func roundTrip() throws {
         for text in ["ctrl+shift+a", "cmd+c, cmd+v", "media:playpause",
-                     "mouse:right", "mouse:wheelup", "f13", "none"] {
+                     "mouse:right", "mouse:wheelup", "ctrl+mouse:wheeldown",
+                     "f13", "none"] {
             let action = try KeyAction.parse(text)
             let rec = Packet.record(keyIndex: 1, layer: 0, action: action)
             #expect(Packet.decode(record: rec) == action, "round trip failed for \(text)")
@@ -245,5 +258,79 @@ struct ProfileTests {
         #expect(profile.assignments.count == 1)
         profile.set(.none, key: 1, layer: 0)
         #expect(profile.assignments.isEmpty)
+    }
+}
+
+@Suite("Backlight")
+struct LedTests {
+
+    /// `SetRgb_Led_Key` writes 0xFE 0xB0 into slot 0 of the layer.
+    @Test("LED record header is FE B0 <layer>")
+    func header() {
+        let rec = Packet.ledRecord(LedSetting(mode: 3, color: 2), layer: 1)
+        #expect(rec[0] == 0xFE)
+        #expect(rec[1] == 0xB0)
+        #expect(rec[2] == 2)          // layer is 1-based on the wire
+        #expect(rec[9] == 1)
+        #expect(rec[11] == 0x23)      // colour 2 high nibble, mode 3 low
+    }
+
+    @Test("Mode and colour pack into one byte")
+    func packing() {
+        #expect(LedSetting(mode: 0, color: 5).packed == 0x50)
+        #expect(LedSetting(mode: 5, color: 7).packed == 0x75)
+        #expect(LedSetting(mode: 1, color: 1).packed == 0x11)
+    }
+
+    @Test("Packed bytes round-trip")
+    func roundTrip() {
+        for mode in LedSetting.modeRange {
+            for color in LedSetting.colorRange {
+                let s = LedSetting(mode: mode, color: color)
+                #expect(LedSetting(packed: s.packed) == s)
+            }
+        }
+    }
+
+    /// The original forces colour 5 rather than letting the high nibble be zero.
+    @Test("Colour zero becomes 5")
+    func colourZeroDefaults() {
+        #expect(LedSetting(mode: 2, color: 0).color == 5)
+        #expect(LedSetting(packed: 0x02).color == 5)
+    }
+
+    @Test("Out-of-range values are clamped")
+    func clamping() {
+        #expect(LedSetting(mode: 99, color: 99).mode == 5)
+        #expect(LedSetting(mode: 99, color: 99).color == 7)
+    }
+
+    @Test("Profiles carry backlight per layer and stay backward compatible")
+    func profileLed() throws {
+        var p = Profile(name: "T")
+        p.setLed(LedSetting(mode: 2, color: 3), layer: 0)
+        let json = try p.jsonString()
+        let back = try JSONDecoder().decode(Profile.self, from: Data(json.utf8))
+        #expect(back.led(layer: 0) == LedSetting(mode: 2, color: 3))
+        #expect(back.led(layer: 1) == nil)
+
+        // A profile written before backlight support still loads.
+        let old = #"{"name":"Old","assignments":[]}"#
+        let decoded = try JSONDecoder().decode(Profile.self, from: Data(old.utf8))
+        #expect(decoded.leds.isEmpty)
+    }
+
+    @Test("apply sends the backlight record before the layer's keys")
+    func applyOrder() throws {
+        let mock = MockTransport()
+        let pad = MacroPad(transport: mock)
+        var p = Profile()
+        p.set(try KeyAction.parse("a"), key: 1, layer: 0)
+        p.setLed(LedSetting(mode: 1, color: 4), layer: 0)
+        try pad.apply(p)
+
+        #expect(mock.payloads[0][0] == 0xFE)   // backlight first
+        #expect(mock.payloads[1][0] == 0xFD)   // then the key
+        #expect(mock.payloads[2].prefix(3).elementsEqual([0xFD, 0xFE, 0xFF]))
     }
 }

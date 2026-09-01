@@ -15,6 +15,7 @@ rewrite: Swift, SwiftUI, IOKit, no third-party dependencies, 904 KB.
 - Edits all three layers, every key and every knob direction
 - Chords (`cmd+c`), macros up to 18 steps (`cmd+c, cmd+v`), media keys, mouse buttons and wheel
 - Records a shortcut by pressing it on your Mac keyboard
+- Backlight control: six effects, seven colours, set per layer
 - Ready-made shortcut sets for Slack, Teams, Zoom, Lightroom Classic, Photoshop,
   Final Cut, VS Code and more — sorted so apps you actually have come first
 - Saves layouts as readable JSON you can keep in a dotfiles repo
@@ -46,6 +47,8 @@ minikeyboard apply mypad.json          # write a layout
 minikeyboard set 1 cmd+c               # program a single key
 minikeyboard set 3 media:playpause --layer 1
 minikeyboard clear                     # wipe every key on every layer
+minikeyboard led solid --color green   # backlight; also `led --list`
+minikeyboard led reactive --layer 1    # light only the key being pressed
 minikeyboard validate mypad.json       # check a file without touching hardware
 minikeyboard keys                      # list every accepted key name
 minikeyboard doctor                    # dump raw HID traffic, for debugging
@@ -122,6 +125,7 @@ The pad speaks HID output reports on its vendor-defined interface
 | Read | `03 FA 0F 03 <layer>` | Pad streams back every record for that layer |
 | Program | `03 <50-byte record>` | Set one key |
 | Commit | `03 FD FE FF` | Close the transaction |
+| Backlight | `03 FE B0 <layer> 08 …` | Set the lighting for one layer |
 | Bootloader | `03 EF EF` | Enter firmware update mode — destructive |
 
 Each key is a 50-byte record:
@@ -137,8 +141,38 @@ Each key is a 50-byte record:
 ```
 
 Media bindings store a 16-bit HID Consumer usage little-endian across bytes 10
-and 11 (`E9 00` is volume up). Mouse bindings store buttons at 10 and a signed
-wheel delta at 11.
+and 11 (`E9 00` is volume up). Mouse bindings put modifiers at 10, the button at
+11, and a signed wheel delta at 14.
+
+The backlight record lives in **slot 0** of each layer, which is why key records
+start at index 1 and a layer read never returns it. Its mode byte is `8`, and
+byte 11 packs the effect in the low nibble and the colour in the high nibble —
+`0x41` is Solid Green.
+
+| Effect | | Colour | |
+|---|---|---|---|
+| 0 | Off | 1 | Red |
+| 1 | Solid | 2 | Orange |
+| 2 | Wave | 3 | Yellow |
+| 3 | Wave reverse | 4 | Green |
+| 4 | Reactive (lights the pressed key) | 5 | Cyan |
+| 5 | Rainbow (reads as white) | 6 | Blue |
+| | | 7 | Purple |
+
+Off and Rainbow ignore the colour.
+
+### What the firmware does not expose
+
+**Per-key colours are not possible on the stock firmware.** The LEDs are
+individually addressable — the wave and reactive effects prove it — but that
+addressing happens on the pad's own MCU. The host only ever sends one mode and
+one colour for the whole layer.
+
+This was tested, not assumed. Sending per-key colour bytes after byte 11 turns
+the whole pad the colour of byte 11 and ignores the rest, and mode values 6-15
+all fall back to Solid. The vendor's own app, the only other known client of
+this firmware, exposes nothing but the six global effects and seven global
+colours. Getting per-key colour would mean replacing the firmware.
 
 `Sources/MiniKeyboardKit/Protocol/` is the reference implementation, and
 `Tests/` pins it to bytes captured from real hardware.

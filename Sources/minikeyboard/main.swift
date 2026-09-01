@@ -11,6 +11,10 @@ USAGE
   minikeyboard set <key> <action> [--layer N]
                                           Program a single key
   minikeyboard clear                      Clear every key on every layer
+  minikeyboard led <mode> [--color C] [--layer N]
+                                          Set the backlight. Mode is a number
+                                          0-5 or a name; colour is 1-7 or a name
+  minikeyboard led --list                 Show the modes and colours
   minikeyboard validate <profile.json>    Parse a profile without touching hardware
   minikeyboard keys                       List every key name the parser accepts
   minikeyboard presets                    List built-in shortcut sets
@@ -67,6 +71,28 @@ do {
                         .joined(separator: " "))
         print("\nModifiers:")
         print("  ctrl shift alt/option cmd/win  (prefix with r for right-hand)")
+
+    case "raw":
+        var commit = false
+        if let i = args.firstIndex(of: "--commit") { commit = true; args.remove(at: i) }
+        let bytes = args.joined(separator: " ")
+            .replacingOccurrences(of: ",", with: " ")
+            .split(separator: " ")
+            .compactMap { UInt8($0.replacingOccurrences(of: "0x", with: ""), radix: 16) }
+        guard !bytes.isEmpty else { fail("raw needs hex bytes, e.g. 03 FE B0 01 08") }
+        guard bytes.count <= Wire.outputReportLength else {
+            fail("a report is at most \(Wire.outputReportLength) bytes")
+        }
+        var report = bytes
+        report.append(contentsOf:
+            [UInt8](repeating: 0, count: Wire.outputReportLength - report.count))
+        let t = try IOKitTransport.open()
+        defer { t.close() }
+        try t.write(report)
+        if commit { try t.write(Packet.commit()) }
+        print("Sent \(bytes.count) byte(s)"
+              + (commit ? " plus commit" : "") + ": "
+              + bytes.map { String(format: "%02X", $0) }.joined(separator: " "))
 
     case "doctor":
         let interfaces = IOKitTransport.interfaces()
@@ -243,6 +269,52 @@ do {
         profile.set(action, key: key, layer: layer)
         try pad.apply(profile)
         print("Key \(key) on layer \(layer) -> \(action.displayLabel)")
+
+    case "led":
+        if args.contains("--list") {
+            print("Modes:")
+            for (i, name) in LedSetting.modeNames.enumerated() {
+                print("  \(i)  \(name)")
+            }
+            print("\nColours:")
+            for i in LedSetting.colorRange {
+                print("  \(i)  \(LedSetting.colorNames[i] ?? "")")
+            }
+            print("\nOff and Rainbow ignore the colour.")
+            break
+        }
+        guard let modeArg = args.first else {
+            fail("led needs a mode, 0-\(LedSetting.modeRange.upperBound) or a name."
+                 + " Run `minikeyboard led --list`.")
+        }
+        guard let mode = Int(modeArg) ?? LedSetting.mode(named: modeArg) else {
+            fail("unknown mode \"\(modeArg)\". Run `minikeyboard led --list`.")
+        }
+        args.removeFirst()
+        // Colour accepts a name or a number.
+        var color = 5
+        if let i = args.firstIndex(of: "--color"), i + 1 < args.count {
+            let raw = args[i + 1]
+            guard let c = Int(raw) ?? LedSetting.color(named: raw) else {
+                fail("unknown colour \"\(raw)\". Run `minikeyboard led --list`.")
+            }
+            color = c
+            args.removeSubrange(i...(i + 1))
+        }
+        let ledLayer = flagValue("--layer", in: &args, default: 0)
+        guard LedSetting.modeRange.contains(mode) else {
+            fail("mode must be \(LedSetting.modeRange.lowerBound)-\(LedSetting.modeRange.upperBound)")
+        }
+        guard LedSetting.colorRange.contains(color) else {
+            fail("colour must be \(LedSetting.colorRange.lowerBound)-\(LedSetting.colorRange.upperBound)")
+        }
+        let setting = LedSetting(mode: mode, color: color)
+        let pad = try MacroPad.connect()
+        defer { pad.close() }
+        try pad.queryGeometry()
+        try pad.setLed(setting, layer: ledLayer)
+        print("Backlight on layer \(ledLayer + 1): \(setting.describe) "
+              + "(byte 0x\(String(format: "%02X", setting.packed)))")
 
     case "clear":
         let pad = try MacroPad.connect()

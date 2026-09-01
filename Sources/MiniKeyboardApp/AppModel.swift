@@ -3,7 +3,7 @@ import Observation
 import MiniKeyboardKit
 
 /// One editable binding in the UI.
-struct Binding: Identifiable, Hashable {
+struct PadBinding: Identifiable, Hashable {
     enum Kind: Hashable {
         case key(Int)                  // 1-based physical key
         case knob(Int, Knob)           // 0-based knob index
@@ -83,28 +83,58 @@ final class AppModel {
 
     /// Wire indices laid out as keys first, then three bindings per knob —
     /// the same order `Identify_KeyBoard_style` uses to build its layouts.
-    var bindings: [Binding] {
+    var bindings: [PadBinding] {
         guard let geo = geometry else { return [] }
-        var result: [Binding] = []
+        var result: [PadBinding] = []
         for k in 0..<geo.keyCount {
-            result.append(Binding(index: k + 1, kind: .key(k + 1)))
+            result.append(PadBinding(index: k + 1, kind: .key(k + 1)))
         }
         // Knob slots start at a fixed base, not right after the last key.
         for k in 0..<geo.knobCount {
             let base = Wire.knobSlotBase + k * Wire.slotsPerKnob
-            for (offset, dir) in Binding.Kind.Knob.allCases.enumerated() {
-                result.append(Binding(index: base + offset, kind: .knob(k, dir)))
+            for (offset, dir) in PadBinding.Kind.Knob.allCases.enumerated() {
+                result.append(PadBinding(index: base + offset, kind: .knob(k, dir)))
             }
         }
         return result
     }
 
-    func action(for binding: Binding) -> KeyAction {
+    func action(for binding: PadBinding) -> KeyAction {
         profile.action(key: binding.index, layer: selectedLayer)
     }
 
-    func setAction(_ action: KeyAction, for binding: Binding) {
+    func setAction(_ action: KeyAction, for binding: PadBinding) {
         profile.set(action, key: binding.index, layer: selectedLayer)
+    }
+
+    // MARK: - Lighting
+
+    /// Changes the effect, keeping the current colour.
+    func setLed(mode: Int) {
+        let current = profile.led(layer: selectedLayer)
+        applyLed(LedSetting(mode: mode, color: current?.color ?? 5))
+    }
+
+    /// Changes the colour, keeping the current effect.
+    func setLed(color: Int) {
+        let current = profile.led(layer: selectedLayer)
+        applyLed(LedSetting(mode: current?.mode ?? 1, color: color))
+    }
+
+    func clearLed() {
+        profile.setLed(nil, layer: selectedLayer)
+    }
+
+    /// Lighting is judged by looking at it, so write it to the pad immediately
+    /// rather than waiting for the next Apply.
+    private func applyLed(_ setting: LedSetting) {
+        profile.setLed(setting, layer: selectedLayer)
+        guard let pad else { return }
+        do {
+            try pad.setLed(setting, layer: selectedLayer)
+        } catch {
+            status = .error("\(error)")
+        }
     }
 
     // MARK: - Presets

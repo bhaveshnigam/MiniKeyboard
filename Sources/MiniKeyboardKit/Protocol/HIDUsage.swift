@@ -134,15 +134,14 @@ public enum MediaUsage {
 
 /// Mouse actions — used when `record[3] == KeyMode.mouse`.
 ///
-/// `record[10]` carries the button bitmask, `record[11]` the wheel delta
-/// (signed; `Traversal_Key_Txt` dispatches on it via a jump table).
+/// `Traversal_Key_Txt` switches on `record[11]` for the button and reads
+/// `record[14]` for the wheel, with `record[10]` carrying modifiers so the
+/// firmware can produce Ctrl/Shift/Alt plus wheel.
 public enum MouseUsage {
     public static let buttons: [String: UInt8] = [
         "left": 0x01, "right": 0x02, "middle": 0x04,
-        "back": 0x08, "forward": 0x10,
     ]
     public static let buttonNames: [UInt8: String] = [
         0x01: "left", 0x02: "right", 0x04: "middle",
-        0x08: "back", 0x10: "forward",
     ]
 }

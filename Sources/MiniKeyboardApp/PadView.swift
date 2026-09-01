@@ -5,18 +5,25 @@ import MiniKeyboardKit
 struct PadView: View {
     @Bindable var model: AppModel
 
-    private var keyBindings: [Binding] {
+    private var keyBindings: [PadBinding] {
         model.bindings.filter { if case .key = $0.kind { true } else { false } }
     }
     private var knobCount: Int { model.geometry?.knobCount ?? 0 }
 
-    /// These pads come three across (3/6/9/12 keys); the 4- and 16-key
-    /// variants are square instead.
+    /// Physical arrangement per variant. A 12-key pad is four across and three
+    /// down, which is what the vendor's own app draws — not three across.
+    private static let gridColumns: [Int: Int] = [
+        3: 3, 4: 4, 5: 5, 6: 3, 8: 4, 9: 3,
+        11: 4, 12: 4, 15: 5, 16: 4,
+    ]
+
     private var columns: Int {
         let n = keyBindings.count
         guard n > 0 else { return 1 }
-        if n % 4 == 0 && n % 3 != 0 { return 4 }
-        return min(n, 3)
+        if let known = Self.gridColumns[n] { return known }
+        if n % 4 == 0 { return 4 }
+        if n % 3 == 0 { return 3 }
+        return min(n, 4)
     }
 
     var body: some View {
@@ -57,7 +64,7 @@ struct PadView: View {
 
 /// One key, drawn as a physical cap: a skirt with a face sitting on top.
 struct KeyCapView: View {
-    let binding: Binding
+    let binding: PadBinding
     let action: KeyAction
     let isSelected: Bool
     var compact = false
@@ -137,26 +144,26 @@ struct DialView: View {
     @Bindable var model: AppModel
     let knobIndex: Int
 
-    private static let order: [Binding.Kind.Knob] = [.counterClockwise, .press, .clockwise]
+    private static let order: [PadBinding.Kind.Knob] = [.counterClockwise, .press, .clockwise]
 
-    private func binding(_ dir: Binding.Kind.Knob) -> Binding? {
+    private func binding(_ dir: PadBinding.Kind.Knob) -> PadBinding? {
         model.bindings.first {
             if case .knob(let i, let d) = $0.kind { i == knobIndex && d == dir } else { false }
         }
     }
-    private func isSelected(_ dir: Binding.Kind.Knob) -> Bool {
+    private func isSelected(_ dir: PadBinding.Kind.Knob) -> Bool {
         guard let b = binding(dir) else { return false }
         return model.selection == b.index
     }
-    private func action(_ dir: Binding.Kind.Knob) -> KeyAction {
+    private func action(_ dir: PadBinding.Kind.Knob) -> KeyAction {
         guard let b = binding(dir) else { return .none }
         return model.action(for: b)
     }
-    private func select(_ dir: Binding.Kind.Knob) {
+    private func select(_ dir: PadBinding.Kind.Knob) {
         if let b = binding(dir) { model.selection = b.index }
     }
 
-    private func symbol(_ dir: Binding.Kind.Knob) -> String {
+    private func symbol(_ dir: PadBinding.Kind.Knob) -> String {
         switch dir {
         case .counterClockwise: "arrow.counterclockwise"
         case .press:            "circle.fill"
@@ -207,7 +214,7 @@ struct DialView: View {
         .frame(width: 96, height: 96)
     }
 
-    private func sector(_ dir: Binding.Kind.Knob, from: Double, to: Double) -> some View {
+    private func sector(_ dir: PadBinding.Kind.Knob, from: Double, to: Double) -> some View {
         let selected = isSelected(dir)
         let shape = AnnularSector(startAngle: from, endAngle: to, thickness: 18)
         let midAngle = (from + to) / 2 - 90

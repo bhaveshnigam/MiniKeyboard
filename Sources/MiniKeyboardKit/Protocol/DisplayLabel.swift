@@ -77,7 +77,6 @@ extension MediaUsage {
 extension MouseUsage {
     private static let labels: [UInt8: String] = [
         0x01: "Left Click", 0x02: "Right Click", 0x04: "Middle Click",
-        0x08: "Mouse Back", 0x10: "Mouse Forward",
     ]
 
     public static func label(for buttons: UInt8) -> String {
@@ -98,10 +97,11 @@ extension KeyAction {
             return chords.map(\.displayLabel).joined(separator: " → ")
         case .media(let usage):
             return MediaUsage.label(for: usage)
-        case .mouse(let buttons, let wheel):
-            if wheel > 0 { return "Wheel Up" }
-            if wheel < 0 { return "Wheel Down" }
-            return MouseUsage.label(for: buttons)
+        case .mouse(let mods, let buttons, let wheel):
+            let prefix = mods.displayGlyphs
+            if wheel > 0 { return prefix + "Wheel Up" }
+            if wheel < 0 { return prefix + "Wheel Down" }
+            return prefix + MouseUsage.label(for: buttons)
         }
     }
 }
