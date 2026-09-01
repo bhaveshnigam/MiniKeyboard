@@ -13,6 +13,7 @@ struct ContentView: View {
         VStack(spacing: 0) {
             DeviceBar(model: model)
             Divider()
+            if model.isStaged { StagedBar(model: model) }
 
             switch model.status {
             case .connected:
@@ -153,6 +154,10 @@ struct DeviceBar: View {
             if let busy = model.busyMessage {
                 ProgressView().controlSize(.small)
                 Text(busy).foregroundStyle(.secondary).font(.callout)
+            } else if model.isStaged {
+                Label("Not written", systemImage: "tray.and.arrow.down")
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(Theme.brass)
             } else if model.isAutoSaving {
                 ProgressView().controlSize(.small)
                 Text("Saving…").foregroundStyle(.secondary).font(.callout)
@@ -191,6 +196,31 @@ struct DotLabelStyle: LabelStyle {
             configuration.icon.font(.system(size: 6))
             configuration.title
         }
+    }
+}
+
+/// Shown while a profile opened from a file is waiting to be written.
+struct StagedBar: View {
+    @Bindable var model: AppModel
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "tray.and.arrow.down.fill")
+                .foregroundStyle(Theme.brass)
+            VStack(alignment: .leading, spacing: 1) {
+                Text("\(model.stagedFrom ?? "Profile") is open but not on the pad")
+                    .font(.callout.weight(.medium))
+                Text("Opening a profile replaces the whole layout, so it waits for you.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            Spacer()
+            Button("Discard") { model.discardStaged() }
+            Button("Write to Pad") { model.apply() }
+                .buttonStyle(.borderedProminent)
+        }
+        .padding(.horizontal, 16).padding(.vertical, 9)
+        .background(Theme.brass.opacity(0.12))
+        .overlay(alignment: .bottom) { Divider() }
     }
 }
 

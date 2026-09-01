@@ -107,6 +107,10 @@ match the hardware.
 - **Auto-save** — on by default. Every edit is written to the pad shortly after
   you stop, so **Apply** (⌘S) is only there to force a write early. Turn it off
   and the status bar goes back to reporting **Unsaved changes**.
+- **Opening a profile stages it.** Replacing a whole layout is too big a change
+  to push on its own — you might just be looking at someone else's profile — so
+  a banner offers **Write to Pad** or **Discard**, and nothing reaches the
+  hardware until you choose.
 - **Read** (⌘D) pulls the pad's current layout back in.
 - **Test** (⇧⌘T) shows what the pad actually sends.
 
@@ -599,9 +603,10 @@ writes are possible.
 MiniKeyboard`, because the pad has no spare bytes to hold them. Delete that
 folder and the app falls back to recognising layouts from their bindings.
 
-**Auto-save is on — will opening a profile overwrite my pad?** Yes. Opening a
-profile is an edit like any other, and auto-save writes edits to the pad. Take a
-backup first, or turn auto-save off.
+**Auto-save is on — will opening a profile overwrite my pad?** No. Opening a
+profile *stages* it: the pad keeps what it has until you press **Write to Pad**.
+Auto-save covers ordinary edits, not wholesale replacement of a layout you may
+just be looking at.
 
 ## License
 

@@ -64,6 +64,14 @@ final class AppModel {
     var toast: String?
     var confirmClearLayer = false
 
+    /// Set when a profile came from a file and has not been written yet.
+    ///
+    /// Opening a file replaces the whole layout, which is too big a change to
+    /// let auto-save push to the pad on its own — you might just be looking at
+    /// someone else's profile. Auto-save stays paused until this is resolved.
+    private(set) var stagedFrom: String?
+    var isStaged: Bool { stagedFrom != nil }
+
     /// Writes every change straight to the pad, the way lighting already does.
     /// On by default; the pad is the only place a layout lives, so leaving
     /// edits unwritten is the surprising behaviour, not the safe one.
@@ -81,6 +89,10 @@ final class AppModel {
 
     /// The profile as it exists on the pad, so edits can be reported as unsaved.
     private var deviceProfile: Profile?
+
+    /// Last layout this Mac saw on this pad, used only to recover preset
+    /// labels. It never becomes the profile.
+    private var cachedLabels: Profile?
 
     /// True when the in-memory profile differs from what the pad holds.
     var hasUnsavedChanges: Bool {
@@ -171,7 +183,8 @@ final class AppModel {
     /// Coalesces a burst of edits — filling a layer touches eighteen keys —
     /// into one write shortly after the user stops.
     func scheduleAutoSave() {
-        guard autoSave, pad != nil else { return }
+        // A staged profile waits for an explicit Apply, however it is edited.
+        guard autoSave, pad != nil, !isStaged else { return }
         autoSaveTask?.cancel()
         autoSaveTask = Task { [weak self] in
             try? await Task.sleep(for: .milliseconds(600))
@@ -180,9 +193,15 @@ final class AppModel {
         }
     }
 
+    /// Throws away a staged profile and goes back to what the pad holds.
+    func discardStaged() {
+        stagedFrom = nil
+        readFromDevice()
+    }
+
     /// Writes the profile to the pad, replacing what is there.
     private func writeNow() {
-        guard let pad, hasUnsavedChanges else { return }
+        guard let pad, hasUnsavedChanges, !isStaged else { return }
         isAutoSaving = true
         defer { isAutoSaving = false }
         do {
@@ -285,14 +304,13 @@ final class AppModel {
             status = .connected(geo)
             profile.geometry = geo
             if selection == nil { selection = bindings.first?.index }
-            // Preset labelling cannot live on the pad, so bring back whatever
-            // this Mac remembers about it before reading the bindings.
-            if let cached = ProfileStore.load(vendorID: pad.vendorID,
-                                              productID: pad.productID,
-                                              geometry: geo) {
-                profile = cached
-            }
-            // Then show what is actually on the pad rather than an empty grid.
+            // The cache is a label source, never a layout source. Loading it
+            // into the profile would make a stale layout look like a pending
+            // edit, which auto-save would then push onto the pad.
+            cachedLabels = ProfileStore.load(vendorID: pad.vendorID,
+                                             productID: pad.productID,
+                                             geometry: geo)
+            // The pad is the only authority on what is actually bound.
             readFromDevice()
         } catch {
             pad = nil
@@ -312,10 +330,15 @@ final class AppModel {
         Task {
             defer { busyMessage = nil }
             do {
-                var read = try pad.readProfile(mergingLabelsFrom: profile)
+                // Prefer labels already on screen, falling back to the cache
+                // from a previous session.
+                let labelSource = profile.assignments.contains { $0.label != nil }
+                    ? profile : (cachedLabels ?? profile)
+                var read = try pad.readProfile(mergingLabelsFrom: labelSource)
                 read.name = profile.name
                 profile = read
                 deviceProfile = read
+                stagedFrom = nil
                 cacheProfile()
                 toast = "Read \(read.assignments.count) binding(s) from the pad."
             } catch {
@@ -332,6 +355,7 @@ final class AppModel {
             do {
                 try pad.apply(profile, clearingOmitted: true)
                 deviceProfile = profile
+                stagedFrom = nil
                 cacheProfile()
                 toast = "Wrote \(profile.assignments.count) binding(s) to the pad."
             } catch {
@@ -361,8 +385,10 @@ final class AppModel {
     func load(from url: URL) {
         do {
             profile = try Profile.load(from: url)
-            toast = "Loaded \(url.lastPathComponent)."
-            scheduleAutoSave()
+            profile.geometry = geometry ?? profile.geometry
+            // Staged, not written: the pad keeps what it has until you say so.
+            stagedFrom = url.lastPathComponent
+            toast = "Loaded \(url.lastPathComponent). Not written to the pad yet."
         } catch {
             status = .error("\(error)")
         }
