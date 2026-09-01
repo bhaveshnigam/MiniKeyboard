@@ -1,0 +1,16 @@
+{
+  "name" : "Example",
+  "geometry" : { "keyCount" : 6, "knobCount" : 2 },
+  "assignments" : [
+    { "key" : 1, "layer" : 0, "action" : "cmd+c" },
+    { "key" : 2, "layer" : 0, "action" : "cmd+v" },
+    { "key" : 3, "layer" : 0, "action" : "cmd+shift+4" },
+    { "key" : 4, "layer" : 0, "action" : "cmd+c, cmd+v" },
+    { "key" : 5, "layer" : 0, "action" : "media:playpause" },
+    { "key" : 6, "layer" : 0, "action" : "mouse:middle" },
+    { "key" : 7, "layer" : 0, "action" : "media:volumedown" },
+    { "key" : 8, "layer" : 0, "action" : "media:mute" },
+    { "key" : 9, "layer" : 0, "action" : "media:volumeup" },
+    { "key" : 1, "layer" : 1, "action" : "f13" }
+  ]
+}
