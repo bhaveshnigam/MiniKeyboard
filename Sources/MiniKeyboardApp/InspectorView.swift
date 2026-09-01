@@ -32,6 +32,9 @@ struct InspectorView: View {
         .background(Color(nsColor: .windowBackgroundColor))
         .onChange(of: model.selection) { syncFromModel() }
         .onChange(of: model.selectedLayer) { syncFromModel() }
+        // The profile arrives asynchronously after connecting, so the field has
+        // to pick it up when it lands rather than only on selection changes.
+        .onChange(of: model.profile) { syncFromModel() }
         .onAppear { syncFromModel() }
     }
 
@@ -71,7 +74,9 @@ struct InspectorView: View {
                 }
                 .help("Press a shortcut on your Mac keyboard to capture it")
 
-                Button("Apply") { commit(binding) }
+                // Named "Assign" because it edits this one key; the toolbar's
+                // "Apply" is what writes the whole profile to the pad.
+                Button("Assign") { commit(binding) }
                     .buttonStyle(.borderedProminent)
                     .disabled(text == model.action(for: binding).displayName)
 
@@ -155,15 +160,14 @@ struct KeyRecorder: NSViewRepresentable {
     @SwiftUI.Binding var isRecording: Bool
     let onCapture: (Chord) -> Void
 
-    func makeNSView(context: Context) -> NSView {
-        let view = NSView()
-        context.coordinator.install()
-        return view
-    }
+    func makeNSView(context: Context) -> NSView { NSView() }
 
     func updateNSView(_ nsView: NSView, context: Context) {
         context.coordinator.onCapture = onCapture
-        context.coordinator.isRecording = isRecording
+        // Install the monitor only while recording. Doing it at launch makes
+        // macOS raise its keystroke-access prompt before the user has asked
+        // for anything; deferring it means the prompt arrives with context.
+        context.coordinator.setRecording(isRecording)
     }
 
     func makeCoordinator() -> Coordinator { Coordinator() }
@@ -173,11 +177,18 @@ struct KeyRecorder: NSViewRepresentable {
     }
 
     final class Coordinator {
-        var isRecording = false
+        private(set) var isRecording = false
         var onCapture: ((Chord) -> Void)?
         private var monitor: Any?
 
-        func install() {
+        func setRecording(_ recording: Bool) {
+            guard recording != isRecording else { return }
+            isRecording = recording
+            recording ? install() : remove()
+        }
+
+        private func install() {
+            guard monitor == nil else { return }
             monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
                 guard let self, self.isRecording else { return event }
                 guard let chord = Self.chord(from: event) else { return nil }

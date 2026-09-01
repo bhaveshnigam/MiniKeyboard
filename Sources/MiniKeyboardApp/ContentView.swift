@@ -15,16 +15,20 @@ struct ContentView: View {
             switch model.status {
             case .connected:
                 HSplitView {
-                    VStack(spacing: 16) {
-                        LayerPicker(selection: $model.selectedLayer)
-                        PadView(model: model)
-                        Spacer(minLength: 0)
+                    // The pad can be taller than the window on 16-key variants,
+                    // so it scrolls rather than clipping.
+                    ScrollView {
+                        VStack(spacing: 16) {
+                            LayerPicker(selection: $model.selectedLayer)
+                            PadView(model: model)
+                            Spacer(minLength: 0)
+                        }
+                        .padding(20)
                     }
-                    .padding(20)
-                    .frame(minWidth: 420)
+                    .frame(minWidth: 440)
 
                     InspectorView(model: model)
-                        .frame(minWidth: 280, idealWidth: 320)
+                        .frame(minWidth: 300, idealWidth: 340)
                 }
             case .disconnected, .error:
                 EmptyStateView(model: model)
@@ -99,6 +103,11 @@ struct DeviceBar: View {
             if let busy = model.busyMessage {
                 ProgressView().controlSize(.small)
                 Text(busy).foregroundStyle(.secondary).font(.callout)
+            } else if model.hasUnsavedChanges {
+                Label("Unsaved changes", systemImage: "circle.fill")
+                    .font(.caption.weight(.medium))
+                    .labelStyle(DotLabelStyle())
+                    .foregroundStyle(Theme.brass)
             }
 
             Button("Reconnect") { model.connect() }
@@ -108,6 +117,16 @@ struct DeviceBar: View {
         .padding(.vertical, 10)
         .font(.callout)
         .background(.bar)
+    }
+}
+
+/// A tiny dot instead of a full icon, for inline status.
+struct DotLabelStyle: LabelStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        HStack(spacing: 5) {
+            configuration.icon.font(.system(size: 6))
+            configuration.title
+        }
     }
 }
 

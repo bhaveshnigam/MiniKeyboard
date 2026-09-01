@@ -8,7 +8,9 @@ struct Binding: Identifiable, Hashable {
         case key(Int)                  // 1-based physical key
         case knob(Int, Knob)           // 0-based knob index
 
-        enum Knob: String, CaseIterable { case counterClockwise, press, clockwise }
+        enum Knob: String, CaseIterable, Hashable {
+            case counterClockwise, press, clockwise
+        }
     }
     var index: Int                     // wire index, 1-based
     var kind: Kind
@@ -57,6 +59,19 @@ final class AppModel {
     var busyMessage: String?
     var toast: String?
 
+    /// The profile as it exists on the pad, so edits can be reported as unsaved.
+    private var deviceProfile: Profile?
+
+    /// True when the in-memory profile differs from what the pad holds.
+    var hasUnsavedChanges: Bool {
+        guard let deviceProfile else { return !profile.assignments.isEmpty }
+        return normalized(profile) != normalized(deviceProfile)
+    }
+
+    private func normalized(_ p: Profile) -> [Profile.Assignment] {
+        p.assignments.sorted { ($0.layer, $0.key) < ($1.layer, $1.key) }
+    }
+
     private var pad: MacroPad?
 
     var geometry: Geometry? {
@@ -71,15 +86,14 @@ final class AppModel {
     var bindings: [Binding] {
         guard let geo = geometry else { return [] }
         var result: [Binding] = []
-        var wire = 1
         for k in 0..<geo.keyCount {
-            result.append(Binding(index: wire, kind: .key(k + 1)))
-            wire += 1
+            result.append(Binding(index: k + 1, kind: .key(k + 1)))
         }
+        // Knob slots start at a fixed base, not right after the last key.
         for k in 0..<geo.knobCount {
-            for dir in Binding.Kind.Knob.allCases {
-                result.append(Binding(index: wire, kind: .knob(k, dir)))
-                wire += 1
+            let base = Wire.knobSlotBase + k * Wire.slotsPerKnob
+            for (offset, dir) in Binding.Kind.Knob.allCases.enumerated() {
+                result.append(Binding(index: base + offset, kind: .knob(k, dir)))
             }
         }
         return result
@@ -103,6 +117,8 @@ final class AppModel {
             status = .connected(geo)
             profile.geometry = geo
             if selection == nil { selection = bindings.first?.index }
+            // Show what is actually on the pad rather than an empty grid.
+            readFromDevice()
         } catch {
             pad = nil
             status = .error("\(error)")
@@ -124,6 +140,7 @@ final class AppModel {
                 var read = try pad.readProfile()
                 read.name = profile.name
                 profile = read
+                deviceProfile = read
                 toast = "Read \(read.assignments.count) binding(s) from the pad."
             } catch {
                 status = .error("\(error)")
@@ -138,7 +155,8 @@ final class AppModel {
             defer { busyMessage = nil }
             do {
                 try pad.apply(profile)
-                toast = "Applied \(profile.assignments.count) binding(s)."
+                deviceProfile = profile
+                toast = "Wrote \(profile.assignments.count) binding(s) to the pad."
             } catch {
                 status = .error("\(error)")
             }
@@ -153,6 +171,7 @@ final class AppModel {
             do {
                 try pad.clearAll()
                 profile.assignments.removeAll()
+                deviceProfile = profile
                 toast = "Cleared every key on all \(Wire.layerCount) layers."
             } catch {
                 status = .error("\(error)")
