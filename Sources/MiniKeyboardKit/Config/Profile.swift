@@ -39,11 +39,25 @@ public struct Profile: Codable, Sendable, Equatable {
         public var appID: String
         /// Display name, e.g. "Microsoft Teams".
         public var appName: String
+        /// True when this was worked out from the bindings rather than set by
+        /// filling the layer, so the UI can hedge instead of asserting.
+        public var inferred: Bool
 
-        public init(layer: Int, appID: String, appName: String) {
+        public init(layer: Int, appID: String, appName: String, inferred: Bool = false) {
             self.layer = layer
             self.appID = appID
             self.appName = appName
+            self.inferred = inferred
+        }
+
+        private enum CodingKeys: String, CodingKey { case layer, appID, appName, inferred }
+
+        public init(from decoder: any Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            layer = try c.decode(Int.self, forKey: .layer)
+            appID = try c.decode(String.self, forKey: .appID)
+            appName = try c.decode(String.self, forKey: .appName)
+            inferred = try c.decodeIfPresent(Bool.self, forKey: .inferred) ?? false
         }
     }
 

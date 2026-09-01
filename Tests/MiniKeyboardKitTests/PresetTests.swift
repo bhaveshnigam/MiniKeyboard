@@ -216,3 +216,83 @@ struct PresetLabelTests {
         #expect(p.label(key: 1, layer: 0) == nil)
     }
 }
+
+@Suite("Recognising a layout")
+struct PresetMatcherTests {
+
+    private func layer(of preset: AppPreset, geometry: Geometry) throws -> [Int: KeyAction] {
+        let profile = try Profile(filling: preset, layer: 0, geometry: geometry)
+        return profile.assignments.reduce(into: [:]) { $0[$1.key] = $1.action }
+    }
+
+    @Test("A layer filled from a preset is recognised as that preset")
+    func recognisesExact() throws {
+        let geo = Geometry(keyCount: 12, knobCount: 2)
+        for preset in [PresetLibrary.teams, PresetLibrary.zoom,
+                       PresetLibrary.lightroomClassic, PresetLibrary.vscode] {
+            let match = PresetMatcher.bestMatch(for: try layer(of: preset, geometry: geo))
+            #expect(match?.presetID == preset.id, "did not recognise \(preset.name)")
+        }
+    }
+
+    /// Keys get moved around and swapped; the set is what identifies it.
+    @Test("Shuffling and swapping a few keys still matches")
+    func toleratesEdits() throws {
+        let geo = Geometry(keyCount: 12, knobCount: 2)
+        var actions = try layer(of: PresetLibrary.teams, geometry: geo)
+
+        // Move everything to different slots.
+        let shuffled = Dictionary(uniqueKeysWithValues:
+            actions.values.enumerated().map { (100 + $0.offset, $0.element) })
+        #expect(PresetMatcher.bestMatch(for: shuffled)?.presetID == "teams")
+
+        // Replace two bindings with something unrelated.
+        actions[1] = try KeyAction.parse("f19")
+        actions[2] = try KeyAction.parse("f18")
+        #expect(PresetMatcher.bestMatch(for: actions)?.presetID == "teams")
+    }
+
+    @Test("An unrelated layout is not claimed as anything")
+    func rejectsUnrelated() throws {
+        let actions = [
+            1: try KeyAction.parse("f13"), 2: try KeyAction.parse("f14"),
+            3: try KeyAction.parse("f15"), 4: try KeyAction.parse("f16"),
+            5: try KeyAction.parse("f17"), 6: try KeyAction.parse("f18"),
+        ]
+        #expect(PresetMatcher.bestMatch(for: actions) == nil)
+    }
+
+    /// Two or three shared shortcuts is not evidence of anything.
+    @Test("A couple of common shortcuts is not enough")
+    func rejectsThinEvidence() throws {
+        let actions = [
+            1: try KeyAction.parse("cmd+c"), 2: try KeyAction.parse("cmd+v"),
+            3: try KeyAction.parse("f13"), 4: try KeyAction.parse("f14"),
+            5: try KeyAction.parse("f15"), 6: try KeyAction.parse("f16"),
+            7: try KeyAction.parse("f17"), 8: try KeyAction.parse("f18"),
+        ]
+        #expect(PresetMatcher.bestMatch(for: actions) == nil)
+    }
+
+    @Test("Inference labels the keys it recognises and marks itself inferred")
+    func inferenceLabels() throws {
+        let geo = Geometry(keyCount: 12, knobCount: 2)
+        var profile = try Profile(filling: PresetLibrary.teams, layer: 0, geometry: geo)
+        // Strip everything a fill would have recorded, as a device read would.
+        profile.setSource(nil, layer: 0)
+        for i in profile.assignments.indices { profile.assignments[i].label = nil }
+
+        profile.inferLayerSources()
+        #expect(profile.source(layer: 0)?.appID == "teams")
+        #expect(profile.source(layer: 0)?.inferred == true)
+        #expect(profile.label(key: 1, layer: 0) == PresetLibrary.teams.shortcuts[0].label)
+    }
+
+    @Test("A layer that already knows its source is left alone")
+    func doesNotOverrideKnownSource() throws {
+        let geo = Geometry(keyCount: 12, knobCount: 2)
+        var profile = try Profile(filling: PresetLibrary.teams, layer: 0, geometry: geo)
+        profile.inferLayerSources()
+        #expect(profile.source(layer: 0)?.inferred == false)
+    }
+}

@@ -10,7 +10,7 @@ struct MiniKeyboardApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView(model: model)
-                .frame(minWidth: 820, minHeight: 660)
+                .frame(minWidth: 860, minHeight: 700)
                 .onAppear { model.connect() }
         }
         .commands {

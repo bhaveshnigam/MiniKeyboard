@@ -116,7 +116,7 @@ has always been written as you click, because you judge it by looking at it.
 
 ### Testing what a key actually sends
 
-**Test** (⇧⌘T) opens a listener. Press a key or turn a knob on the pad and it
+**Test** (⇧⌘T) opens a listener in the bottom of the window. Press a key or turn a knob on the pad and it
 reports what reached the Mac — the readable form and the exact binding token
 side by side — while anything the pad types lands in a text area, so a macro's
 content and its timing are both visible.
@@ -133,10 +133,29 @@ the chord: "Toggle mute" with `⇧⌘M` underneath it. A badge above the pad nam
 whose shortcuts these are, and **Clear labels** drops the labelling while keeping
 the bindings.
 
-Labels live in the profile, not on the pad — the firmware has nowhere to put
-them. Reading from the device keeps a label only where the binding still matches,
-and rebinding a key clears its label rather than leaving "Mute" on something that
-no longer mutes.
+Labels live in the profile, not on the pad. The firmware genuinely has nowhere to
+put them: every byte of a key record it does not recognise is zeroed on write —
+spare bytes 6 to 8 and the tail past the macro steps all read back as zero — so
+a template marker cannot be stashed on the device. Tested, not assumed.
+
+Two things cover for that:
+
+- **A local cache.** The last layout written to a pad is kept in
+  `~/Library/Application Support/MiniKeyboard`, keyed by product id and shape,
+  so labelling survives quitting the app.
+- **Recognition.** With no cache — a pad set up on another machine, or a cleared
+  cache — the bindings themselves are the evidence. If most of a layer matches a
+  known preset it is labelled anyway, and the badge hedges with *"Looks like
+  Microsoft Teams"* rather than asserting it.
+
+  Matching is order-independent, so keys can be moved around or a few swapped
+  out and it still recognises the set. It needs at least three matches, half the
+  layer, and a clear margin over the runner-up, so a couple of shared shortcuts
+  like `⌘C` never trigger it.
+
+Reading from the device keeps a label only where the binding still matches, and
+rebinding a key clears its label rather than leaving "Mute" on something that no
+longer mutes.
 
 ## The CLI
 
@@ -568,6 +587,14 @@ probably does not exist, and a full USB HID stack. That is a different project.
 
 **Why is the backlight not read back?** The firmware never returns slot 0. Only
 writes are possible.
+
+**Where are my preset labels stored?** In `~/Library/Application Support/
+MiniKeyboard`, because the pad has no spare bytes to hold them. Delete that
+folder and the app falls back to recognising layouts from their bindings.
+
+**Auto-save is on — will opening a profile overwrite my pad?** Yes. Opening a
+profile is an edit like any other, and auto-save writes edits to the pad. Take a
+backup first, or turn auto-save off.
 
 ## License
 

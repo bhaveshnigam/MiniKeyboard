@@ -172,8 +172,11 @@ do {
                 var n = 0
                 while let r = try t.read(timeout: 0.4) {
                     n += 1
-                    let hex = r.prefix(20).map { String(format: "%02X", $0) }
+                    let hex = r.prefix(26).map { String(format: "%02X", $0) }
                         .joined(separator: " ")
+                        + "  …  "
+                        + r.dropFirst(44).prefix(8).map { String(format: "%02X", $0) }
+                            .joined(separator: " ")
                     print("    [\(n)] \(hex)")
                     if n > 40 { break }
                 }

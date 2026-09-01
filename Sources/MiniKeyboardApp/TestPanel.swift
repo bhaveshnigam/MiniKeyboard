@@ -19,7 +19,9 @@ struct CapturedEvent: Identifiable {
 /// ask it what it just sent. Watching the events it produces is the only way to
 /// confirm a binding does what you meant, which is why this exists.
 struct TestPanel: View {
-    @Environment(\.dismiss) private var dismiss
+    /// Closing is the parent's call, since this lives inside the main window.
+    let close: () -> Void
+
     @State private var events: [CapturedEvent] = []
     @State private var typed = ""
     @State private var monitor: Any?
@@ -28,35 +30,42 @@ struct TestPanel: View {
         VStack(spacing: 0) {
             header
             Divider()
-            HSplitView {
+            HStack(spacing: 0) {
                 typingArea
+                Divider()
                 eventLog
             }
         }
-        .frame(width: 760, height: 460)
+        .frame(height: 210)
+        .background(Color(nsColor: .windowBackgroundColor))
         .onAppear(perform: start)
         .onDisappear(perform: stop)
     }
 
     private var header: some View {
         HStack(spacing: 10) {
-            Circle().fill(.green).frame(width: 8, height: 8)
-            Text("Listening").font(.callout.weight(.medium))
+            Circle().fill(.green).frame(width: 7, height: 7)
+            Text("Listening").font(.caption.weight(.semibold))
             Text("· press a key or turn a knob on the pad")
-                .font(.callout).foregroundStyle(.secondary)
+                .font(.caption).foregroundStyle(.secondary)
             Spacer()
             Button("Clear") { events.removeAll(); typed = "" }
-                .controlSize(.small)
-            Button("Done") { dismiss() }
-                .controlSize(.small)
-                .keyboardShortcut(.cancelAction)
+                .buttonStyle(.plain).font(.caption).foregroundStyle(.secondary)
+            Button {
+                close()
+            } label: {
+                Image(systemName: "xmark.circle.fill")
+                    .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.plain)
+            .help("Close the tester")
         }
-        .padding(12)
+        .padding(.horizontal, 14).padding(.vertical, 8)
         .background(.bar)
     }
 
     private var typingArea: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 5) {
             Text("Text")
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
@@ -70,17 +79,16 @@ struct TestPanel: View {
                 }
                 .overlay(alignment: .topLeading) {
                     if typed.isEmpty {
-                        Text("Anything the pad types lands here, so a macro's\n"
-                             + "text and its timing are both visible.")
-                            .font(.callout)
+                        Text("Anything the pad types lands here.")
+                            .font(.caption)
                             .foregroundStyle(.tertiary)
-                            .padding(.horizontal, 6).padding(.vertical, 9)
+                            .padding(.horizontal, 6).padding(.vertical, 8)
                             .allowsHitTesting(false)
                     }
                 }
         }
-        .padding(14)
-        .frame(minWidth: 300)
+        .padding(12)
+        .frame(minWidth: 220)
     }
 
     private var eventLog: some View {
@@ -114,12 +122,12 @@ struct TestPanel: View {
             .overlay {
                 if events.isEmpty {
                     Text("Nothing yet.")
-                        .font(.callout).foregroundStyle(.tertiary)
+                        .font(.caption).foregroundStyle(.tertiary)
                 }
             }
         }
-        .padding(14)
-        .frame(minWidth: 300)
+        .padding(12)
+        .frame(minWidth: 240)
     }
 
     private func row(_ event: CapturedEvent) -> some View {

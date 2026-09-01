@@ -43,6 +43,12 @@ struct ContentView: View {
                     InspectorView(model: model)
                         .frame(minWidth: 300, idealWidth: 340)
                 }
+
+                if showingTester {
+                    Divider()
+                    TestPanel { showingTester = false }
+                        .transition(.move(edge: .bottom))
+                }
             case .disconnected, .error:
                 EmptyStateView(model: model)
             }
@@ -76,11 +82,15 @@ struct ContentView: View {
                 }
                 .help("Browse ready-made shortcut sets for common apps")
 
-                Button { showingTester = true } label: {
+                Button { withAnimation(.easeOut(duration: 0.15)) {
+                            showingTester.toggle()
+                         } } label: {
                     Label("Test", systemImage: "waveform.badge.magnifyingglass")
                 }
                 .help("Press a key on the pad and see what it actually sends")
                 .keyboardShortcut("t", modifiers: [.command, .shift])
+                .background(showingTester ? Theme.brass.opacity(0.22) : .clear,
+                            in: RoundedRectangle(cornerRadius: 5))
 
                 Spacer()
 
@@ -102,9 +112,7 @@ struct ContentView: View {
         .sheet(isPresented: $showingPresets) {
             PresetBrowser(model: model)
         }
-        .sheet(isPresented: $showingTester) {
-            TestPanel()
-        }
+
         .fileImporter(isPresented: $showingImporter,
                       allowedContentTypes: [.json]) { result in
             if case .success(let url) = result {

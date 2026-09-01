@@ -321,14 +321,17 @@ struct LayerSourceBadge: View {
                     .font(.caption)
                     .foregroundStyle(Theme.brass)
             }
-            Text("\(source.appName) shortcuts")
+            Text(source.inferred ? "Looks like \(source.appName)"
+                                 : "\(source.appName) shortcuts")
                 .font(.caption.weight(.medium))
             Spacer(minLength: 0)
             Button("Clear labels", action: clear)
                 .buttonStyle(.plain)
                 .font(.caption)
                 .foregroundStyle(.secondary)
-                .help("Keep the bindings, drop the preset labelling")
+                .help(source.inferred
+                      ? "Recognised from the bindings, not set by you. Keep them, drop the labels"
+                      : "Keep the bindings, drop the preset labelling")
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 6)

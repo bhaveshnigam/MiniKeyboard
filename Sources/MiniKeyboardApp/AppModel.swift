@@ -188,9 +188,17 @@ final class AppModel {
         do {
             try pad.apply(profile, clearingOmitted: true)
             deviceProfile = profile
+            cacheProfile()
         } catch {
             status = .error("\(error)")
         }
+    }
+
+    /// Keeps the labelling this Mac knows about, since the pad cannot hold it.
+    private func cacheProfile() {
+        guard let pad else { return }
+        ProfileStore.save(profile, vendorID: pad.vendorID,
+                          productID: pad.productID, geometry: geometry)
     }
 
     /// Changes the effect, keeping the current colour.
@@ -275,7 +283,14 @@ final class AppModel {
             status = .connected(geo)
             profile.geometry = geo
             if selection == nil { selection = bindings.first?.index }
-            // Show what is actually on the pad rather than an empty grid.
+            // Preset labelling cannot live on the pad, so bring back whatever
+            // this Mac remembers about it before reading the bindings.
+            if let cached = ProfileStore.load(vendorID: pad.vendorID,
+                                              productID: pad.productID,
+                                              geometry: geo) {
+                profile = cached
+            }
+            // Then show what is actually on the pad rather than an empty grid.
             readFromDevice()
         } catch {
             pad = nil
@@ -299,6 +314,7 @@ final class AppModel {
                 read.name = profile.name
                 profile = read
                 deviceProfile = read
+                cacheProfile()
                 toast = "Read \(read.assignments.count) binding(s) from the pad."
             } catch {
                 status = .error("\(error)")
@@ -314,6 +330,7 @@ final class AppModel {
             do {
                 try pad.apply(profile, clearingOmitted: true)
                 deviceProfile = profile
+                cacheProfile()
                 toast = "Wrote \(profile.assignments.count) binding(s) to the pad."
             } catch {
                 status = .error("\(error)")

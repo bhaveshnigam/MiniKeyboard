@@ -9,8 +9,15 @@ public final class MacroPad {
 
     public private(set) var geometry: Geometry?
 
+    /// Which pad this is, for keying the local cache.
+    public let vendorID: Int
+    public let productID: Int
+
     public init(transport: Transport) {
         self.transport = transport
+        let io = transport as? IOKitTransport
+        self.vendorID = io?.vendorID ?? Wire.vendorID
+        self.productID = io?.productID ?? 0
     }
 
     /// Opens the first connected pad.
@@ -79,6 +86,9 @@ public final class MacroPad {
                 profile.setSource(source, layer: layer)
             }
         }
+        // Where this Mac has no record of a layer, work out what it looks like
+        // from the bindings themselves.
+        profile.inferLayerSources()
         profile.assignments.sort { ($0.layer, $0.key) < ($1.layer, $1.key) }
         return profile
     }
