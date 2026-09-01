@@ -7,6 +7,7 @@ struct ContentView: View {
     @State private var showingImporter = false
     @State private var showingExporter = false
     @State private var showingPresets = false
+    @State private var showingTester = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -75,6 +76,12 @@ struct ContentView: View {
                 }
                 .help("Browse ready-made shortcut sets for common apps")
 
+                Button { showingTester = true } label: {
+                    Label("Test", systemImage: "waveform.badge.magnifyingglass")
+                }
+                .help("Press a key on the pad and see what it actually sends")
+                .keyboardShortcut("t", modifiers: [.command, .shift])
+
                 Spacer()
 
                 Button { model.readFromDevice() } label: {
@@ -94,6 +101,9 @@ struct ContentView: View {
         }
         .sheet(isPresented: $showingPresets) {
             PresetBrowser(model: model)
+        }
+        .sheet(isPresented: $showingTester) {
+            TestPanel()
         }
         .fileImporter(isPresented: $showingImporter,
                       allowedContentTypes: [.json]) { result in

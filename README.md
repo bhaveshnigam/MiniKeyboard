@@ -108,10 +108,23 @@ match the hardware.
   you stop, so **Apply** (⌘S) is only there to force a write early. Turn it off
   and the status bar goes back to reporting **Unsaved changes**.
 - **Read** (⌘D) pulls the pad's current layout back in.
+- **Test** (⇧⌘T) shows what the pad actually sends.
 
 The pad is the only place a layout lives, so leaving edits unwritten is the
 surprising behaviour, not the safe one — hence auto-save on by default. Lighting
 has always been written as you click, because you judge it by looking at it.
+
+### Testing what a key actually sends
+
+**Test** (⇧⌘T) opens a listener. Press a key or turn a knob on the pad and it
+reports what reached the Mac — the readable form and the exact binding token
+side by side — while anything the pad types lands in a text area, so a macro's
+content and its timing are both visible.
+
+As far as macOS is concerned the pad is just a keyboard; there is no way to ask
+it what it just sent. Watching the events it produces is the only way to confirm
+a binding does what you meant, which is why this exists. It catches keys,
+chords, wheel and pan from a knob, middle click, and media keys.
 
 ### Seeing what a key is for
 
