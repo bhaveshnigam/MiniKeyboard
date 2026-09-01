@@ -8,8 +8,9 @@ USAGE
   minikeyboard list                       Show connected pads and their geometry
   minikeyboard read [--layer N]           Read the pad's current config as JSON
   minikeyboard apply <profile.json>       Write a profile to the pad
-  minikeyboard set <key> <action> [--layer N]
-                                          Program a single key
+  minikeyboard set <key> <action> [--layer N] [--delay MS]
+                                          Program a single key. --delay sets the
+                                          gap between macro keystrokes (0-6000)
   minikeyboard clear                      Clear every key on every layer
   minikeyboard led <mode> [--color C] [--layer N]
                                           Set the backlight. Mode is a number
@@ -73,6 +74,29 @@ do {
                         .joined(separator: " "))
         print("\nModifiers:")
         print("  ctrl shift alt/option cmd/win  (prefix with r for right-hand)")
+
+    case "variant":
+        let pad = try MacroPad.connect()
+        defer { pad.close() }
+        let current = try pad.queryGeometry()
+        if args.count < 2 {
+            print("Reported: \(current.describe)")
+            print("\nKnown variants (keys + knobs):")
+            for v in Packet.knownVariants {
+                let mark = v == current ? " <- current" : ""
+                print("  \(v.keyCount) + \(v.knobCount)\(mark)")
+            }
+            print("\nSet with: minikeyboard variant <keys> <knobs>")
+            print("Only do this if the pad reports itself wrong; telling it it "
+                  + "has keys it does not have makes it claim keys that are not there.")
+            break
+        }
+        guard let k = Int(args[0]), let n = Int(args[1]) else {
+            fail("variant needs two numbers: keys and knobs")
+        }
+        let wanted = Geometry(keyCount: k, knobCount: n)
+        try pad.setVariant(wanted)
+        print("Told the pad it is \(wanted.describe). Replug it to re-enumerate.")
 
     case "raw":
         var commit = false
@@ -244,7 +268,8 @@ do {
         print("OK — \(profile.assignments.count) assignment(s) across \(Wire.layerCount) layers")
         for a in profile.assignments.sorted(by: { ($0.layer, $0.key) < ($1.layer, $1.key) }) {
             print("  layer \(a.layer) key \(a.key): \(a.action.displayLabel)"
-                  + "  [\(a.action.displayName)]")
+                  + "  [\(a.action.displayName)]"
+                  + (a.delay.map { "  delay \($0)ms" } ?? ""))
         }
 
     case "apply":
@@ -262,15 +287,20 @@ do {
     case "set":
         guard args.count >= 2 else { fail("set needs a key index and an action") }
         let layer = flagValue("--layer", in: &args, default: 0)
+        let delay = flagValue("--delay", in: &args, default: -1)
+        guard delay <= Wire.maxDelay else {
+            fail("--delay must be 0-\(Wire.maxDelay) milliseconds")
+        }
         guard let key = Int(args[0]) else { fail("key index must be a number") }
         let action = try KeyAction.parse(args[1])
         let pad = try MacroPad.connect()
         defer { pad.close() }
         try pad.queryGeometry()
         var profile = Profile()
-        profile.set(action, key: key, layer: layer)
+        profile.set(action, key: key, layer: layer, delay: delay >= 0 ? delay : nil)
         try pad.apply(profile)
-        print("Key \(key) on layer \(layer) -> \(action.displayLabel)")
+        print("Key \(key) on layer \(layer) -> \(action.displayLabel)"
+              + (delay >= 0 ? "  (delay \(delay) ms)" : ""))
 
     case "led":
         if args.contains("--list") {

@@ -114,8 +114,8 @@ struct MacroPadTests {
         let pad = MacroPad(transport: mock)
         let layer = try pad.readLayer(0)
         #expect(layer.count == 2)
-        #expect(layer[3] == (try KeyAction.parse("cmd+shift+4")))
-        #expect(layer[7] == (try KeyAction.parse("media:mute")))
+        #expect(layer[3]?.action == (try KeyAction.parse("cmd+shift+4")))
+        #expect(layer[7]?.action == (try KeyAction.parse("media:mute")))
         #expect(layer[1] == nil)
     }
 

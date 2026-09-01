@@ -36,10 +36,11 @@ public final class MacroPad {
     /// keeps reading until the device goes quiet rather than requesting each
     /// key individually.
     public func readLayer(_ layer: Int,
-                          idleTimeout: TimeInterval = 0.25) throws -> [Int: KeyAction] {
+                          idleTimeout: TimeInterval = 0.25)
+                          throws -> [Int: (action: KeyAction, delay: Int?)] {
         try transport.write(Packet.readLayer(layer))
 
-        var result: [Int: KeyAction] = [:]
+        var result: [Int: (action: KeyAction, delay: Int?)] = [:]
         while let response = try transport.read(timeout: idleTimeout) {
             let rec = Packet.strip(response)
             // The record carries its own key index and layer, so trust those
@@ -47,7 +48,9 @@ public final class MacroPad {
             guard let index = Packet.keyIndex(of: rec) else { continue }
             if let l = Packet.layer(of: rec), l != layer { continue }
             let action = Packet.decode(record: rec)
-            if action != .none { result[index] = action }
+            if action != .none {
+                result[index] = (action, Packet.delay(ofResponse: rec))
+            }
         }
         return result
     }
@@ -57,8 +60,8 @@ public final class MacroPad {
         let geo = try geometry ?? queryGeometry()
         var profile = Profile(geometry: geo)
         for layer in 0..<Wire.layerCount {
-            for (index, action) in try readLayer(layer) {
-                profile.set(action, key: index, layer: layer)
+            for (index, entry) in try readLayer(layer) {
+                profile.set(entry.action, key: index, layer: layer, delay: entry.delay)
             }
         }
         profile.assignments.sort { ($0.layer, $0.key) < ($1.layer, $1.key) }
@@ -85,6 +88,12 @@ public final class MacroPad {
                 try transport.write(Packet.programKey(keyIndex: UInt8(assignment.key),
                                                       layer: layer,
                                                       action: assignment.action))
+                // The delay is a separate record: a mode 5 patch sent with an
+                // action in it stores the delay and drops the action.
+                if let delay = assignment.delay, delay > 0 {
+                    try transport.write(Packet.delayReport(keyIndex: UInt8(assignment.key),
+                                                           layer: layer, delay: delay))
+                }
                 done += 1
                 progress?(done, work.count)
             }
@@ -115,6 +124,18 @@ public final class MacroPad {
             }
             try transport.write(Packet.commit())
         }
+    }
+
+    /// Tells the pad what model it is.
+    ///
+    /// Only for a pad that misreports its geometry. Passing a variant the
+    /// hardware does not match makes it claim keys it does not have, so this is
+    /// not reachable from the UI.
+    public func setVariant(_ geometry: Geometry) throws {
+        guard Packet.knownVariants.contains(geometry) else {
+            throw DeviceError.unsupportedVariant(geometry)
+        }
+        try transport.write(Packet.setVariant(geometry))
     }
 
     /// Reboots the pad into its firmware bootloader.

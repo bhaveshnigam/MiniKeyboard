@@ -39,6 +39,9 @@ public enum Wire {
     /// Each knob contributes counter-clockwise, press, clockwise.
     public static let slotsPerKnob = 3
 
+    /// Largest delay the original's spin box allows, in milliseconds.
+    public static let maxDelay = 6000
+
     /// Maximum steps in a single key's macro (`cmpq $0x12` in `Traversal_Key_Txt`).
     public static let maxMacroSteps = 18
 
@@ -65,6 +68,10 @@ public enum Wire {
         public static let keyIndex = 1
         public static let layer = 2
         public static let mode = 3
+        /// 16-bit little-endian inter-keystroke delay, in milliseconds.
+        /// `Key_Delay_Page_Opt` writes the spin box value across these two bytes.
+        public static let delayLow = 4
+        public static let delayHigh = 5
         public static let stepCount = 9
         /// First macro step. Step `n` is `(modifier: steps + 2n, usage: steps + 2n + 1)`.
         public static let steps = 10
@@ -94,6 +101,9 @@ public enum KeyMode: UInt8, Sendable, Codable, CaseIterable {
     case keyboard = 1
     case media = 2
     case mouse = 3
+    /// A patch that sets only the inter-keystroke delay, leaving the key's
+    /// action alone. The DelaySetting tab uses this.
+    case delayPatch = 5
     /// The backlight record. `on_tabWidget_currentChanged` sets this mode and
     /// selects slot 0 when the RGB LED tab opens.
     case led = 8

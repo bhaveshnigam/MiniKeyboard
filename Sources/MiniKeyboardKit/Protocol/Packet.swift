@@ -39,6 +39,27 @@ public enum Packet {
         report([Wire.Command.program, 0xFE, 0xFF])
     }
 
+    /// Geometries the firmware will accept, from the lookup tables behind
+    /// `Set_Keyboard_Ver_SLOT`.
+    public static let knownVariants: [Geometry] = [
+        Geometry(keyCount: 2,  knobCount: 0), Geometry(keyCount: 3,  knobCount: 1),
+        Geometry(keyCount: 4,  knobCount: 0), Geometry(keyCount: 4,  knobCount: 1),
+        Geometry(keyCount: 5,  knobCount: 0), Geometry(keyCount: 6,  knobCount: 0),
+        Geometry(keyCount: 6,  knobCount: 1), Geometry(keyCount: 6,  knobCount: 2),
+        Geometry(keyCount: 9,  knobCount: 2), Geometry(keyCount: 9,  knobCount: 3),
+        Geometry(keyCount: 11, knobCount: 3), Geometry(keyCount: 12, knobCount: 2),
+        Geometry(keyCount: 12, knobCount: 3), Geometry(keyCount: 15, knobCount: 3),
+    ]
+
+    /// `03 FC FC <keys> <knobs>` — tell the pad what model it is.
+    ///
+    /// Only useful when a pad misreports its own geometry. Setting a variant
+    /// the hardware does not match makes it claim keys it does not have.
+    public static func setVariant(_ geometry: Geometry) -> [UInt8] {
+        report([Wire.Command.setVariant, Wire.Command.setVariant,
+                UInt8(geometry.keyCount), UInt8(geometry.knobCount)])
+    }
+
     /// `03 EF EF` — reboot into the firmware bootloader. Destructive.
     public static func enterBootloader() -> [UInt8] {
         report([Wire.Command.bootloader, Wire.Command.bootloader])
@@ -85,6 +106,28 @@ public enum Packet {
         return rec
     }
 
+    /// A record that sets only a key's inter-keystroke delay.
+    ///
+    /// The firmware treats mode 5 as a patch: it updates bytes 4 and 5 and
+    /// leaves the key's action untouched. Verified on hardware — sending a
+    /// mode 5 record with a macro in it stores the delay and discards the
+    /// macro, so the action has to be written first, in its own record.
+    public static func delayRecord(keyIndex: UInt8, layer: Int, delay: Int) -> [UInt8] {
+        var rec = [UInt8](repeating: 0, count: Wire.recordLength)
+        rec[Wire.Field.command]   = Wire.Command.program
+        rec[Wire.Field.keyIndex]  = keyIndex
+        rec[Wire.Field.layer]     = UInt8(layer + 1)
+        rec[Wire.Field.mode]      = KeyMode.delayPatch.rawValue
+        let clamped = UInt16(min(max(delay, 0), Wire.maxDelay))
+        rec[Wire.Field.delayLow]  = UInt8(clamped & 0xFF)
+        rec[Wire.Field.delayHigh] = UInt8(clamped >> 8)
+        return rec
+    }
+
+    public static func delayReport(keyIndex: UInt8, layer: Int, delay: Int) -> [UInt8] {
+        report(delayRecord(keyIndex: keyIndex, layer: layer, delay: delay))
+    }
+
     /// A full 65-byte program-key report.
     public static func programKey(keyIndex: UInt8, layer: Int, action: KeyAction) -> [UInt8] {
         report(record(keyIndex: keyIndex, layer: layer, action: action))
@@ -97,7 +140,7 @@ public enum Packet {
         guard count > 0, let mode = KeyMode(rawValue: rec[Wire.Field.mode]) else { return .none }
 
         switch mode {
-        case .keyboard:
+        case .keyboard, .delayPatch:
             var chords: [Chord] = []
             for n in 0..<min(count, Wire.maxMacroSteps) {
                 let mi = Wire.Field.steps + 2 * n
@@ -154,6 +197,30 @@ public enum Packet {
         guard rec.count > Wire.Field.layer else { return nil }
         let l = Int(rec[Wire.Field.layer])
         return (1...Wire.layerCount).contains(l) ? l - 1 : nil
+    }
+
+    /// The inter-keystroke delay a record read back from the device carries,
+    /// in milliseconds, or nil when it has none.
+    ///
+    /// The firmware swaps these two bytes between the write and read paths:
+    /// a value written low-byte-first at byte 4 comes back high-byte-first.
+    /// Verified on hardware — writing `04 05` reads back as `05 04` every time —
+    /// so writes stay little-endian to match the original app, and reads are
+    /// decoded big-endian.
+    public static func delay(ofResponse rec: [UInt8]) -> Int? {
+        guard rec.count > Wire.Field.delayHigh else { return nil }
+        let value = Int(rec[Wire.Field.delayLow]) << 8
+                  | Int(rec[Wire.Field.delayHigh])
+        return value > 0 ? value : nil
+    }
+
+    /// The delay encoded in a record this library built, which is still in
+    /// write order.
+    public static func delay(of rec: [UInt8]) -> Int? {
+        guard rec.count > Wire.Field.delayHigh else { return nil }
+        let value = Int(rec[Wire.Field.delayLow])
+                  | Int(rec[Wire.Field.delayHigh]) << 8
+        return value > 0 ? value : nil
     }
 
     /// Parses the response to `queryGeometry()`.

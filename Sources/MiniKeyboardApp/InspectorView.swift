@@ -19,6 +19,7 @@ struct InspectorView: View {
                 if let binding {
                     header(binding)
                     editor(binding)
+                    delayEditor(binding)
                     presets(binding)
                 } else {
                     Text("Select a key to edit it.")
@@ -113,6 +114,38 @@ struct InspectorView: View {
             isRecording = false
             commit(binding)
         })
+    }
+
+    /// Only macros have gaps to space out, so this stays out of the way until
+    /// the key actually holds more than one keystroke.
+    @ViewBuilder
+    private func delayEditor(_ binding: PadBinding) -> some View {
+        if case .keyboard(let chords) = model.action(for: binding), chords.count > 1 {
+            let current = model.delay(for: binding)
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Keystroke gap")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                HStack(spacing: 8) {
+                    Slider(
+                        value: Binding(
+                            get: { Double(current ?? 0) },
+                            set: { model.setDelay($0 <= 0 ? nil : Int($0), for: binding) }
+                        ),
+                        in: 0...Double(Wire.maxDelay), step: 10
+                    )
+                    Text(current.map { "\($0) ms" } ?? "default")
+                        .font(.system(size: 11, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 66, alignment: .trailing)
+                }
+                Text("Pause between the \(chords.count) keystrokes. Some apps drop "
+                     + "macros sent at full speed.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
     }
 
     private func presets(_ binding: PadBinding) -> some View {

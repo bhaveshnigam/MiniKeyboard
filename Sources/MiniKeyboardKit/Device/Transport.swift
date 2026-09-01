@@ -17,6 +17,7 @@ public enum DeviceError: Error, CustomStringConvertible {
     case writeFailed(Int32)
     case accessDenied
     case badResponse
+    case unsupportedVariant(Geometry)
 
     public var description: String {
         switch self {
@@ -36,6 +37,13 @@ public enum DeviceError: Error, CustomStringConvertible {
                 """
         case .badResponse:
             return "The device returned a response that could not be parsed."
+        case .unsupportedVariant(let g):
+            let known = Packet.knownVariants
+                .map { "\($0.keyCount)+\($0.knobCount)" }.joined(separator: ", ")
+            return """
+                The firmware has no variant for \(g.keyCount) keys and \
+                \(g.knobCount) knobs. Known variants (keys+knobs): \(known).
+                """
         }
     }
 }

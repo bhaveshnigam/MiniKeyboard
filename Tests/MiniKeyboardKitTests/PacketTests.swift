@@ -372,3 +372,108 @@ struct LayerColorTests {
         #expect(records.allSatisfy { $0[3] == KeyMode.led.rawValue })
     }
 }
+
+@Suite("Keystroke delay")
+struct DelayTests {
+
+    /// A delay is its own record. `Key_Delay_Page_Opt` writes the spin box
+    /// value across bytes 4 and 5 with mode 5.
+    @Test("Delay record is mode 5 with the value at bytes 4 and 5")
+    func encoding() {
+        let rec = Packet.delayRecord(keyIndex: 12, layer: 2, delay: 300)
+        #expect(rec[0] == Wire.Command.program)
+        #expect(rec[1] == 12)
+        #expect(rec[2] == 3)
+        #expect(rec[3] == KeyMode.delayPatch.rawValue)
+        #expect(rec[4] == UInt8(300 & 0xFF))
+        #expect(rec[5] == UInt8(300 >> 8))
+        // Nothing else, or the firmware would take it as the key's action.
+        #expect(rec[9] == 0)
+    }
+
+    @Test("Action records carry no delay bytes")
+    func actionRecordIsClean() throws {
+        let rec = Packet.record(keyIndex: 1, layer: 0, action: try KeyAction.parse("a, b"))
+        #expect(rec[3] == KeyMode.keyboard.rawValue)
+        #expect(rec[4] == 0 && rec[5] == 0)
+    }
+
+    @Test("Delay is clamped to the firmware maximum")
+    func clamped() {
+        let rec = Packet.delayRecord(keyIndex: 1, layer: 0, delay: 99999)
+        #expect(Packet.delay(of: rec) == Wire.maxDelay)
+    }
+
+    @Test("Setting an action again does not discard a configured delay")
+    func delaySurvivesReassignment() throws {
+        var p = Profile()
+        p.set(try KeyAction.parse("a"), key: 1, layer: 0, delay: 250)
+        #expect(p.delay(key: 1, layer: 0) == 250)
+        p.set(try KeyAction.parse("b"), key: 1, layer: 0)
+        #expect(p.delay(key: 1, layer: 0) == 250)
+    }
+
+    @Test("Profiles round-trip the delay")
+    func profileRoundTrip() throws {
+        var p = Profile(name: "D")
+        p.set(try KeyAction.parse("a, b"), key: 1, layer: 0, delay: 400)
+        let back = try JSONDecoder().decode(
+            Profile.self, from: Data(try p.jsonString().utf8))
+        #expect(back.delay(key: 1, layer: 0) == 400)
+    }
+
+    /// The action must land first, then the delay patch.
+    @Test("apply writes the action then the delay, in that order")
+    func applyOrder() throws {
+        let mock = MockTransport()
+        let pad = MacroPad(transport: mock)
+        var p = Profile()
+        p.set(try KeyAction.parse("a, b"), key: 1, layer: 0, delay: 250)
+        try pad.apply(p)
+
+        #expect(mock.payloads[0][3] == KeyMode.keyboard.rawValue)
+        #expect(mock.payloads[0][9] == 2)                        // the macro
+        #expect(mock.payloads[1][3] == KeyMode.delayPatch.rawValue)
+        #expect(Packet.delay(of: mock.payloads[1]) == 250)
+        #expect(mock.payloads[2].prefix(3).elementsEqual([0xFD, 0xFE, 0xFF]))
+    }
+
+    @Test("No delay means no extra record")
+    func noDelayNoRecord() throws {
+        let mock = MockTransport()
+        let pad = MacroPad(transport: mock)
+        var p = Profile()
+        p.set(try KeyAction.parse("a"), key: 1, layer: 0)
+        try pad.apply(p)
+        #expect(mock.written.count == 2)   // action plus commit
+    }
+}
+
+@Suite("Delay byte order")
+struct DelayByteOrderTests {
+
+    /// The firmware swaps bytes 4 and 5 between the write and read paths.
+    /// Captured on hardware: writing `02 01` reads back as `01 02`, and
+    /// writing `01 02` reads back as `02 01`.
+    @Test("Writes stay little endian, matching the original app")
+    func writeOrder() {
+        let rec = Packet.delayRecord(keyIndex: 12, layer: 2, delay: 258)
+        #expect(rec[Wire.Field.delayLow] == 0x02)    // low byte first
+        #expect(rec[Wire.Field.delayHigh] == 0x01)
+    }
+
+    @Test("Responses decode big endian")
+    func readOrder() {
+        // Exactly what the pad returned after a 258 ms write.
+        let bytes = "03 FA 0C 03 01 01 02 00 00 00 01 00 04"
+            .split(separator: " ").map { UInt8($0, radix: 16)! }
+        #expect(Packet.delay(ofResponse: Packet.strip(bytes)) == 258)
+    }
+
+    @Test("A 250 ms write reads back as 250")
+    func capturedTwoFifty() {
+        let bytes = "03 FA 0C 03 01 00 FA 00 00 00 01 08 2C"
+            .split(separator: " ").map { UInt8($0, radix: 16)! }
+        #expect(Packet.delay(ofResponse: Packet.strip(bytes)) == 250)
+    }
+}

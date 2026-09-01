@@ -14,6 +14,7 @@ rewrite: Swift, SwiftUI, IOKit, no third-party dependencies, 904 KB.
 - Reads your pad's current layout off the device
 - Edits all three layers, every key and every knob direction
 - Chords (`cmd+c`), macros up to 18 steps (`cmd+c, cmd+v`), media keys, mouse buttons and wheel
+- Adjustable gap between macro keystrokes, for apps that drop input sent at full speed
 - Records a shortcut by pressing it on your Mac keyboard
 - Backlight control: six effects, seven colours, set per layer — including
   one-click colour coding so the pad shows which layer is live
@@ -51,6 +52,8 @@ minikeyboard clear                     # wipe every key on every layer
 minikeyboard led solid --color green   # backlight; also `led --list`
 minikeyboard led reactive --layer 1    # light only the key being pressed
 minikeyboard led-layers                # green/blue/red for layers 1/2/3
+minikeyboard set 5 "cmd+c, cmd+v" --delay 200   # macro with a 200 ms gap
+minikeyboard variant                   # show the pad's declared model
 minikeyboard validate mypad.json       # check a file without touching hardware
 minikeyboard keys                      # list every accepted key name
 minikeyboard doctor                    # dump raw HID traffic, for debugging
@@ -173,6 +176,27 @@ indicator. Green, blue and red are the most separable of the seven available and
 differ in lightness as well as hue, so they stay distinguishable for the common
 forms of colour blindness.
 
+### Keystroke delay
+
+A key holding a macro can carry a gap between its keystrokes, 0-6000 ms, which
+matters because some apps drop input sent at full speed. It is a **separate
+record**: mode 5 with the value at bytes 4 and 5, sent after the action record.
+A mode 5 record that also contains an action stores the delay and discards the
+action, so the order matters.
+
+The firmware swaps those two bytes between paths — a value written low byte
+first comes back high byte first. Writes stay little-endian to match the
+original app; reads are decoded big-endian.
+
+### Declared model
+
+`03 FC FC <keys> <knobs>` tells the pad what model it is, and it accepts
+fourteen geometries: 2+0, 3+1, 4+0, 4+1, 5+0, 6+0, 6+1, 6+2, 9+2, 9+3, 11+3,
+12+2, 12+3, 15+3. `minikeyboard variant` shows the current one. This is only for
+a pad that misreports itself, so it is CLI-only and not reachable from the app —
+claiming keys the hardware does not have leaves the pad describing keys that are
+not there.
+
 ### What the firmware does not expose
 
 **Per-key colours are not possible on the stock firmware.** The LEDs are
@@ -189,13 +213,38 @@ colours. Getting per-key colour would mean replacing the firmware.
 `Sources/MiniKeyboardKit/Protocol/` is the reference implementation, and
 `Tests/` pins it to bytes captured from real hardware.
 
+## Parity with the original app
+
+Every function in the original binary was walked and checked against this build.
+
+| Original | Here |
+|---|---|
+| BaseKeys tab | Chords and macros |
+| Ctrl Shift Alt tab | Modifiers, as part of a chord |
+| MutiMedia tab | `media:` bindings |
+| Mouse tab | `mouse:` bindings, including modified wheel |
+| RGB LED tab | Lighting panel and `led` |
+| DelaySetting tab | Keystroke gap |
+| Layer 1/2/3 | Three layers |
+| Reading Device | `read`, and on connect |
+| Download | Apply |
+| clear / Clear All | `clear` and Clear |
+| Dialog1 pad-size picker | Not needed — geometry is read from the pad |
+| Dialog2 alternate editor | Not needed — the view follows any geometry |
+| Firmware update button | `enterBootloader` exists but is deliberately unreachable |
+| English / Chinese toggle | **English only** |
+| Windows drive-letter helper | Vestigial in the original; irrelevant on macOS |
+
+Not in the original: JSON profiles, a CLI, app shortcut presets, colour-coded
+layers, cheatsheet generation, and `doctor` / `raw` for protocol work.
+
 ## Development
 
 ```
 Sources/MiniKeyboardKit/   protocol, IOKit transport, profiles, presets — no UI
 Sources/minikeyboard/      CLI
 Sources/MiniKeyboardApp/   SwiftUI app
-Tests/                     37 tests, none needing a device
+Tests/                     57 tests, none needing a device
 ```
 
 Device access sits behind a `Transport` protocol, so the driver is tested

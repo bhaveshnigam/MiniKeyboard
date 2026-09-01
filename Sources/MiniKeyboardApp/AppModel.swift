@@ -107,6 +107,14 @@ final class AppModel {
         profile.set(action, key: binding.index, layer: selectedLayer)
     }
 
+    func delay(for binding: PadBinding) -> Int? {
+        profile.delay(key: binding.index, layer: selectedLayer)
+    }
+
+    func setDelay(_ delay: Int?, for binding: PadBinding) {
+        profile.setDelay(delay, key: binding.index, layer: selectedLayer)
+    }
+
     // MARK: - Lighting
 
     /// Changes the effect, keeping the current colour.

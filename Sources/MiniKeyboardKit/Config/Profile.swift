@@ -11,11 +11,15 @@ public struct Profile: Codable, Sendable, Equatable {
         /// 0-based layer.
         public var layer: Int
         public var action: KeyAction
+        /// Inter-keystroke delay in milliseconds, for macros that need one.
+        /// Absent means the firmware default.
+        public var delay: Int?
 
-        public init(key: Int, layer: Int, action: KeyAction) {
+        public init(key: Int, layer: Int, action: KeyAction, delay: Int? = nil) {
             self.key = key
             self.layer = layer
             self.action = action
+            self.delay = delay
         }
     }
 
@@ -79,16 +83,29 @@ public struct Profile: Codable, Sendable, Equatable {
         assignments.first { $0.key == key && $0.layer == layer }?.action ?? .none
     }
 
-    public mutating func set(_ action: KeyAction, key: Int, layer: Int) {
+    public func delay(key: Int, layer: Int) -> Int? {
+        assignments.first { $0.key == key && $0.layer == layer }?.delay
+    }
+
+    public mutating func set(_ action: KeyAction, key: Int, layer: Int, delay: Int? = nil) {
         if let i = assignments.firstIndex(where: { $0.key == key && $0.layer == layer }) {
             if action == .none {
                 assignments.remove(at: i)
             } else {
                 assignments[i].action = action
+                // Only overwrite the delay when one is supplied, so setting an
+                // action does not silently discard a configured delay.
+                if delay != nil { assignments[i].delay = delay }
             }
         } else if action != .none {
-            assignments.append(Assignment(key: key, layer: layer, action: action))
+            assignments.append(Assignment(key: key, layer: layer, action: action, delay: delay))
         }
+    }
+
+    public mutating func setDelay(_ delay: Int?, key: Int, layer: Int) {
+        guard let i = assignments.firstIndex(where: { $0.key == key && $0.layer == layer })
+        else { return }
+        assignments[i].delay = delay
     }
 
     // MARK: - JSON
