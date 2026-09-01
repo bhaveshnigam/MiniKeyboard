@@ -50,7 +50,7 @@ public enum KeyAction: Sendable, Hashable, Codable {
     /// One or more chords played in sequence (up to `Wire.maxMacroSteps`).
     case keyboard([Chord])
     /// A consumer-page media control.
-    case media(UInt8)
+    case media(UInt16)
     /// A mouse button bitmask and/or wheel delta.
     case mouse(buttons: UInt8, wheel: Int8)
 

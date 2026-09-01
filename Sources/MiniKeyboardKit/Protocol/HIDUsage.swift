@@ -90,38 +90,45 @@ public enum HIDUsage {
 
 /// HID Usage Table, page 0x0C (Consumer) — used when `record[3] == KeyMode.media`.
 ///
-/// The firmware stores a single-byte selector rather than the full 16-bit consumer
-/// usage, so these are the pad's own media codes.
+/// Confirmed against a live pad: the record stores the full 16-bit consumer
+/// usage little-endian across `record[10]` and `record[11]`. A volume-down
+/// binding reads back as `EA 00`, mute as `E2 00`, brightness down as `70 00`.
 public enum MediaUsage {
-    public static let byName: [String: UInt8] = [
-        "playpause": 0x01, "play": 0x01, "pause": 0x01,
-        "next": 0x02, "nexttrack": 0x02,
-        "previous": 0x03, "prevtrack": 0x03, "prev": 0x03,
-        "stop": 0x04,
-        "mute": 0x05,
-        "volumeup": 0x06, "volup": 0x06,
-        "volumedown": 0x07, "voldown": 0x07,
-        "email": 0x08,
-        "calculator": 0x09, "calc": 0x09,
-        "explorer": 0x0A, "files": 0x0A,
-        "browser": 0x0B, "home": 0x0B,
-        "back": 0x0C, "forward": 0x0D, "refresh": 0x0E,
-        "search": 0x0F,
-        "brightnessup": 0x10, "brightnessdown": 0x11,
-        "screenshot": 0x12,
+    public static let byName: [String: UInt16] = [
+        "playpause": 0x00CD, "play": 0x00CD, "pause": 0x00CD,
+        "next": 0x00B5, "nexttrack": 0x00B5,
+        "previous": 0x00B6, "prevtrack": 0x00B6, "prev": 0x00B6,
+        "stop": 0x00B7,
+        "eject": 0x00B8,
+        "mute": 0x00E2,
+        "volumeup": 0x00E9, "volup": 0x00E9,
+        "volumedown": 0x00EA, "voldown": 0x00EA,
+        "brightnessup": 0x006F,
+        "brightnessdown": 0x0070,
+        "player": 0x0183, "mediaplayer": 0x0183,
+        "email": 0x018A, "mail": 0x018A,
+        "calculator": 0x0192, "calc": 0x0192,
+        "explorer": 0x0194, "files": 0x0194, "mycomputer": 0x0194,
+        "search": 0x0221,
+        "browser": 0x0223, "home": 0x0223,
+        "back": 0x0224,
+        "forward": 0x0225,
+        "refresh": 0x0227,
+        "bookmarks": 0x022A,
     ]
 
-    public static let names: [UInt8: String] = [
-        0x01: "playpause", 0x02: "next", 0x03: "previous", 0x04: "stop",
-        0x05: "mute", 0x06: "volumeup", 0x07: "volumedown", 0x08: "email",
-        0x09: "calculator", 0x0A: "explorer", 0x0B: "browser", 0x0C: "back",
-        0x0D: "forward", 0x0E: "refresh", 0x0F: "search",
-        0x10: "brightnessup", 0x11: "brightnessdown", 0x12: "screenshot",
+    public static let names: [UInt16: String] = [
+        0x00CD: "playpause", 0x00B5: "next", 0x00B6: "previous", 0x00B7: "stop",
+        0x00B8: "eject", 0x00E2: "mute", 0x00E9: "volumeup", 0x00EA: "volumedown",
+        0x006F: "brightnessup", 0x0070: "brightnessdown",
+        0x0183: "player", 0x018A: "email", 0x0192: "calculator",
+        0x0194: "explorer", 0x0221: "search", 0x0223: "browser",
+        0x0224: "back", 0x0225: "forward", 0x0227: "refresh", 0x022A: "bookmarks",
     ]
 
-    public static func code(for name: String) -> UInt8? { byName[name.lowercased()] }
-    public static func name(for code: UInt8) -> String {
-        names[code] ?? String(format: "0x%02X", code)
+    public static func code(for name: String) -> UInt16? { byName[name.lowercased()] }
+    public static func name(for code: UInt16) -> String {
+        names[code] ?? String(format: "0x%04X", code)
     }
 }
 

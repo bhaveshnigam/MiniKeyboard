@@ -24,11 +24,19 @@ struct PacketTests {
         #expect(Array(p[0..<4]) == [0x03, 0xFB, 0xFB, 0xFB])
     }
 
-    /// `read_Hidkey_Data`: movw $0xFA03 then arg bytes then the 1-based index.
-    @Test("Read-key request is 03 FA <layer> <knobs> <index>")
+    /// `Read_configuration_clicked` calls `read_Hidkey_Data(3, 0x0F, 3)`,
+    /// so the ceilings are 0x0F keys / 0x03 knobs and the varying byte is the layer.
+    @Test("Read-layer request is 03 FA 0F 03 <layer>")
     func readRequest() {
-        let p = Packet.readKey(index: 7, layer: 2, knobCount: 3)
-        #expect(Array(p[0..<5]) == [0x03, 0xFA, 0x02, 0x03, 0x07])
+        #expect(Array(Packet.readLayer(0)[0..<5]) == [0x03, 0xFA, 0x0F, 0x03, 0x01])
+        #expect(Array(Packet.readLayer(2)[0..<5]) == [0x03, 0xFA, 0x0F, 0x03, 0x03])
+    }
+
+    @Test("Records identify their own key and layer")
+    func recordSelfIdentifies() {
+        let rec = Packet.record(keyIndex: 9, layer: 2, action: .keyboard([Chord(usage: 0x04)]))
+        #expect(Packet.keyIndex(of: rec) == 9)
+        #expect(Packet.layer(of: rec) == 2)
     }
 
     /// `HID_write` tail: movw $0xFEFD then movb $0xFF.
@@ -82,21 +90,71 @@ struct PacketTests {
         #expect(rec[46...49].allSatisfy { $0 == 0 })
     }
 
-    @Test("Media and mouse modes set the mode byte")
-    func modeBytes() throws {
+    @Test("Media keys store a 16-bit consumer usage little endian")
+    func mediaEncoding() throws {
         let media = Packet.record(keyIndex: 2, layer: 0,
                                   action: try KeyAction.parse("media:volumeup"))
         #expect(media[3] == 2)
-        #expect(media[11] == 0x06)
+        #expect(media[10] == 0xE9)   // Volume Increment, low byte
+        #expect(media[11] == 0x00)
 
+        let calc = Packet.record(keyIndex: 2, layer: 0,
+                                 action: try KeyAction.parse("media:calculator"))
+        #expect(calc[10] == 0x92)    // 0x0192 AL Calculator
+        #expect(calc[11] == 0x01)
+    }
+
+    @Test("Mouse actions store a 4-byte payload")
+    func mouseEncoding() throws {
         let mouse = Packet.record(keyIndex: 2, layer: 0,
                                   action: try KeyAction.parse("mouse:left"))
         #expect(mouse[3] == 3)
+        #expect(mouse[9] == 4)       // payload length, not a step count
         #expect(mouse[10] == 0x01)
 
         let wheel = Packet.record(keyIndex: 2, layer: 0,
                                   action: try KeyAction.parse("mouse:wheeldown"))
         #expect(Int8(bitPattern: wheel[11]) == -1)
+    }
+
+    /// Captured from a live 12-key / 2-knob pad. These are the exact bytes the
+    /// firmware returned, so they pin the decoder to real hardware behaviour
+    /// rather than to an assumption about the layout.
+    @Test("Decodes reports captured from real hardware")
+    func realCaptures() throws {
+        func decode(_ hex: String) -> KeyAction {
+            let bytes = hex.split(separator: " ").map { UInt8($0, radix: 16)! }
+            return Packet.decode(record: Packet.strip(bytes))
+        }
+        // key 1 -> keypad plus
+        #expect(decode("03 FA 01 01 01 00 00 00 00 00 01 00 57") == .keyboard([Chord(usage: 0x57)]))
+        // key 20 -> ctrl+up
+        #expect(decode("03 FA 14 01 01 00 00 00 00 00 01 01 52")
+                == .keyboard([Chord(modifiers: .leftControl, usage: 0x52)]))
+        // knob 1 counter-clockwise -> volume down
+        #expect(decode("03 FA 10 01 02 00 00 00 00 00 01 EA 00") == .media(0x00EA))
+        // knob 1 press -> mute
+        #expect(decode("03 FA 11 01 02 00 00 00 00 00 01 E2 00") == .media(0x00E2))
+        // knob 2 clockwise -> brightness up
+        #expect(decode("03 FA 15 01 02 00 00 00 00 00 01 6F 00") == .media(0x006F))
+        // a mouse wheel binding
+        #expect(decode("03 FA 11 02 03 00 00 00 00 00 04 00 01") == .mouse(buttons: 0, wheel: 1))
+    }
+
+    @Test("Records read back from hardware identify their own slot")
+    func capturedHeaders() {
+        let bytes = "03 FA 15 01 02 00 00 00 00 00 01 6F 00"
+            .split(separator: " ").map { UInt8($0, radix: 16)! }
+        let rec = Packet.strip(bytes)
+        #expect(Packet.keyIndex(of: rec) == 21)   // 0x15, knob 2 clockwise
+        #expect(Packet.layer(of: rec) == 0)       // wire layer 1 -> index 0
+    }
+
+    @Test("Knob slots start at a fixed base after the key block")
+    func slotLayout() {
+        let slots = Wire.slotIndices(for: Geometry(keyCount: 12, knobCount: 2))
+        #expect(Array(slots.prefix(12)) == Array(1...12))
+        #expect(Array(slots.suffix(6)) == [16, 17, 18, 19, 20, 21])
     }
 
     @Test("Records round-trip through decode")

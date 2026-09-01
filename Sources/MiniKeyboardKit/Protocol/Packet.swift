@@ -22,10 +22,16 @@ public enum Packet {
         report([Wire.Command.query, Wire.Command.query, Wire.Command.query])
     }
 
-    /// `03 FA <b> <c> <index>` — read one key's stored configuration.
-    /// `index` is 1-based, matching the loop in `read_Hidkey_Data`.
-    public static func readKey(index: UInt8, layer: UInt8, knobCount: UInt8 = 0) -> [UInt8] {
-        report([Wire.Command.read, layer, knobCount, index])
+    /// `03 FA <maxKeys> <maxKnobs> <layer>` — ask the pad to dump one whole layer.
+    ///
+    /// `Read_configuration_clicked` calls `read_Hidkey_Data(3, 0x0F, 3)`: three
+    /// layers, and the constants 0x0F/0x03 as the key and knob ceilings. The
+    /// device answers with a burst of records, one HID report each, rather than
+    /// one reply per request.
+    public static func readLayer(_ layer: Int,
+                                 maxKeys: UInt8 = 0x0F,
+                                 maxKnobs: UInt8 = 0x03) -> [UInt8] {
+        report([Wire.Command.read, maxKeys, maxKnobs, UInt8(layer + 1)])
     }
 
     /// `03 FD FE FF` — commit the current transaction.
@@ -62,13 +68,16 @@ public enum Packet {
                 rec[Wire.Field.steps + 2 * n + 1] = chord.usage
             }
 
-        case .media(let code):
+        case .media(let usage):
+            // 16-bit consumer usage, little endian.
             rec[Wire.Field.stepCount] = 1
-            rec[Wire.Field.steps]     = 0
-            rec[Wire.Field.steps + 1] = code
+            rec[Wire.Field.steps]     = UInt8(usage & 0xFF)
+            rec[Wire.Field.steps + 1] = UInt8(usage >> 8)
 
         case .mouse(let buttons, let wheel):
-            rec[Wire.Field.stepCount] = 1
+            // The pad stores a 4-byte mouse payload — buttons, wheel, x, y —
+            // and puts its length in the count field rather than a step count.
+            rec[Wire.Field.stepCount] = 4
             rec[Wire.Field.steps]     = buttons
             rec[Wire.Field.steps + 1] = UInt8(bitPattern: wheel)
         }
@@ -101,12 +110,43 @@ public enum Packet {
             return chords.isEmpty ? .none : .keyboard(chords)
 
         case .media:
-            return .media(rec[Wire.Field.steps + 1])
+            let usage = UInt16(rec[Wire.Field.steps])
+                      | UInt16(rec[Wire.Field.steps + 1]) << 8
+            return usage == 0 ? .none : .media(usage)
 
         case .mouse:
             return .mouse(buttons: rec[Wire.Field.steps],
                           wheel: Int8(bitPattern: rec[Wire.Field.steps + 1]))
         }
+    }
+
+    /// Strips the leading HID report-ID byte from a device reply, leaving a
+    /// record that lines up with the write layout.
+    ///
+    /// Replies come back as `03 FA <index> <layer> <mode> …` — the same record
+    /// the host sends, shifted one byte by the report ID and with `FA` in place
+    /// of the `FD` command.
+    public static func strip(_ response: [UInt8]) -> [UInt8] {
+        guard let first = response.first, first == Wire.reportID else { return response }
+        return Array(response.dropFirst())
+    }
+
+    /// The key index a record claims to describe (`record[1]`), or nil if the
+    /// report is not a key record.
+    public static func keyIndex(of rec: [UInt8]) -> Int? {
+        guard rec.count > Wire.Field.layer,
+              rec[Wire.Field.command] == Wire.Command.program
+                || rec[Wire.Field.command] == Wire.Command.read
+        else { return nil }
+        let index = Int(rec[Wire.Field.keyIndex])
+        return index > 0 ? index : nil
+    }
+
+    /// The 1-based layer a record claims to describe (`record[2]`).
+    public static func layer(of rec: [UInt8]) -> Int? {
+        guard rec.count > Wire.Field.layer else { return nil }
+        let l = Int(rec[Wire.Field.layer])
+        return (1...Wire.layerCount).contains(l) ? l - 1 : nil
     }
 
     /// Parses the response to `queryGeometry()`.

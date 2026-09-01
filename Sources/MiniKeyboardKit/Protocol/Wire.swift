@@ -31,6 +31,14 @@ public enum Wire {
     /// Maximum addressable keys per layer.
     public static let maxKeysPerLayer = 60
 
+    /// Physical keys occupy a fixed block of slots regardless of how many the
+    /// pad actually has; knobs start after it. Confirmed on a 12-key/2-knob pad,
+    /// whose knob bindings read back at slots 16-21.
+    public static let keySlotCount = 15
+    public static let knobSlotBase = 16
+    /// Each knob contributes counter-clockwise, press, clockwise.
+    public static let slotsPerKnob = 3
+
     /// Maximum steps in a single key's macro (`cmpq $0x12` in `Traversal_Key_Txt`).
     public static let maxMacroSteps = 18
 
@@ -56,6 +64,20 @@ public enum Wire {
         public static let stepCount = 9
         /// First macro step. Step `n` is `(modifier: steps + 2n, usage: steps + 2n + 1)`.
         public static let steps = 10
+    }
+}
+
+extension Wire {
+    /// Wire slot indices for a given geometry: keys first, then three slots per
+    /// knob starting at `knobSlotBase`.
+    public static func slotIndices(for geometry: Geometry?) -> [Int] {
+        let geo = geometry ?? Geometry(keyCount: keySlotCount, knobCount: 3)
+        var slots = Array(1...max(geo.keyCount, 1))
+        for k in 0..<geo.knobCount {
+            let base = knobSlotBase + k * slotsPerKnob
+            slots.append(contentsOf: base..<(base + slotsPerKnob))
+        }
+        return slots
     }
 }
 

@@ -61,6 +61,46 @@ do {
         print("\nModifiers:")
         print("  ctrl shift alt/option cmd/win  (prefix with r for right-hand)")
 
+    case "doctor":
+        let interfaces = IOKitTransport.interfaces()
+        guard !interfaces.isEmpty else {
+            print("No matching HID interface for vendor 0x1189.")
+            exit(1)
+        }
+        print("Matching HID interfaces:")
+        for i in interfaces { print("  " + i.describe) }
+
+        for i in interfaces where i.isVendorDefined {
+            print("\nProbing \(i.describe)")
+            let t = try IOKitTransport.open(i)
+            defer { t.close() }
+            try t.write(Packet.queryGeometry())
+            if let response = try t.read(timeout: 1.0) {
+                let hex = response.prefix(16)
+                    .map { String(format: "%02X", $0) }.joined(separator: " ")
+                print("  response (\(response.count) bytes): \(hex) …")
+                for (n, b) in response.prefix(8).enumerated() where b != 0 {
+                    print("    byte[\(n)] = \(b) (0x\(String(format: "%02X", b)))")
+                }
+            } else {
+                print("  no response within 1s")
+            }
+
+            for layer in 0..<Wire.layerCount {
+                print("  -- layer \(layer + 1) dump --")
+                try t.write(Packet.readLayer(layer))
+                var n = 0
+                while let r = try t.read(timeout: 0.4) {
+                    n += 1
+                    let hex = r.prefix(20).map { String(format: "%02X", $0) }
+                        .joined(separator: " ")
+                    print("    [\(n)] \(hex)")
+                    if n > 40 { break }
+                }
+                if n == 0 { print("    (no records)") }
+            }
+        }
+
     case "list":
         let devices = IOKitTransport.discoverAll()
         if devices.isEmpty {
@@ -128,5 +168,5 @@ do {
         fail("unknown command \"\(command)\". Run `minikeyboard help`.")
     }
 } catch {
-    fail("\(error)")
+    fail(readableMessage(for: error))
 }

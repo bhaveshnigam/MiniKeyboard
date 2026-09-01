@@ -9,7 +9,7 @@ import IOKit.hid
 public final class IOKitTransport: Transport, @unchecked Sendable {
     private let device: IOHIDDevice
     private let queue = DispatchQueue(label: "com.minikeyboard.hid")
-    private var inputBuffer = [UInt8](repeating: 0, count: Wire.inputReportLength)
+    private var inputBuffer: [UInt8]
 
     /// Reports delivered by the input callback, oldest first.
     private var pending: [[UInt8]] = []
@@ -20,8 +20,15 @@ public final class IOKitTransport: Transport, @unchecked Sendable {
     public let productID: Int
     public let productName: String
 
+    /// Largest input report this interface can deliver.
+    public let maxInputReportSize: Int
+
     private init(device: IOHIDDevice) throws {
         self.device = device
+        let inputSize = IOKitTransport.intProperty(device, kIOHIDMaxInputReportSizeKey)
+            ?? Wire.inputReportLength
+        self.maxInputReportSize = inputSize
+        self.inputBuffer = [UInt8](repeating: 0, count: max(inputSize, Wire.inputReportLength))
         self.vendorID = IOKitTransport.intProperty(device, kIOHIDVendorIDKey) ?? 0
         self.productID = IOKitTransport.intProperty(device, kIOHIDProductIDKey) ?? 0
         self.productName = IOKitTransport.stringProperty(device, kIOHIDProductKey) ?? "Macro Pad"
@@ -79,6 +86,47 @@ public final class IOKitTransport: Transport, @unchecked Sendable {
         }
     }
 
+    /// A matching HID interface, with the descriptor fields that decide
+    /// which one carries the configuration protocol.
+    public struct Interface {
+        public let vendorID: Int
+        public let productID: Int
+        public let usagePage: Int
+        public let usage: Int
+        public let product: String
+        public let maxInput: Int
+        public let maxOutput: Int
+        let device: IOHIDDevice
+
+        public var isVendorDefined: Bool { usagePage >= 0xFF00 }
+
+        public var describe: String {
+            String(format: "%04X:%04X  usagePage 0x%04X usage %d  in %d out %d  %@%@",
+                   vendorID, productID, usagePage, usage, maxInput, maxOutput,
+                   product, isVendorDefined ? "  [config interface]" : "")
+        }
+    }
+
+    /// Every matching interface, with descriptors.
+    public static func interfaces() -> [Interface] {
+        discoverAll().map { dev in
+            Interface(
+                vendorID: intProperty(dev, kIOHIDVendorIDKey) ?? 0,
+                productID: intProperty(dev, kIOHIDProductIDKey) ?? 0,
+                usagePage: intProperty(dev, kIOHIDPrimaryUsagePageKey) ?? 0,
+                usage: intProperty(dev, kIOHIDPrimaryUsageKey) ?? 0,
+                product: stringProperty(dev, kIOHIDProductKey) ?? "unknown",
+                maxInput: intProperty(dev, kIOHIDMaxInputReportSizeKey) ?? 0,
+                maxOutput: intProperty(dev, kIOHIDMaxOutputReportSizeKey) ?? 0,
+                device: dev)
+        }
+    }
+
+    /// Opens one specific interface.
+    public static func open(_ interface: Interface) throws -> IOKitTransport {
+        try IOKitTransport(device: interface.device)
+    }
+
     /// Opens the pad's configuration interface.
     ///
     /// These pads expose several HID interfaces; only the vendor-defined one
@@ -107,10 +155,12 @@ public final class IOKitTransport: Transport, @unchecked Sendable {
 
     public func write(_ report: [UInt8]) throws {
         guard isOpen else { throw DeviceError.writeFailed(kIOReturnNotOpen) }
-        var payload = report
-        // The report ID is passed out of band; the body follows it.
-        let reportID = CFIndex(payload.removeFirst())
-        let result = payload.withUnsafeBufferPointer { buf in
+        // This interface declares a 65-byte output report and the leading 0x03
+        // is part of that report body, not a separate prefix. hidapi behaves the
+        // same way: it only strips the first byte when it is zero. So the whole
+        // buffer goes on the wire, with byte 0 doubling as the report ID.
+        let reportID = CFIndex(report[0])
+        let result = report.withUnsafeBufferPointer { buf in
             IOHIDDeviceSetReport(device, kIOHIDReportTypeOutput, reportID,
                                  buf.baseAddress!, buf.count)
         }

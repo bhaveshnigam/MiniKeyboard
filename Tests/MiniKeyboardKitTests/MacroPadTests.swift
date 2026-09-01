@@ -95,17 +95,28 @@ struct MacroPadTests {
         #expect(mock.written.allSatisfy { $0[0] == 0x03 })
     }
 
-    @Test("readKey decodes the device's record")
+    @Test("readLayer decodes a burst of records and keys them by index")
     func readBack() throws {
         let mock = MockTransport()
-        var record = Packet.record(keyIndex: 3, layer: 0,
-                                   action: try KeyAction.parse("cmd+shift+4"))
-        record.append(contentsOf: [UInt8](repeating: 0, count: 14))  // pad to 64
-        mock.responses = [record]
+        func padded(_ r: [UInt8]) -> [UInt8] {
+            r + [UInt8](repeating: 0, count: 65 - r.count)
+        }
+        mock.responses = [
+            padded(Packet.record(keyIndex: 3, layer: 0,
+                                 action: try KeyAction.parse("cmd+shift+4"))),
+            padded(Packet.record(keyIndex: 7, layer: 0,
+                                 action: try KeyAction.parse("media:mute"))),
+            // A record for another layer must be ignored.
+            padded(Packet.record(keyIndex: 1, layer: 2,
+                                 action: try KeyAction.parse("a"))),
+        ]
 
         let pad = MacroPad(transport: mock)
-        let action = try pad.readKey(index: 3, layer: 0)
-        #expect(action == (try KeyAction.parse("cmd+shift+4")))
+        let layer = try pad.readLayer(0)
+        #expect(layer.count == 2)
+        #expect(layer[3] == (try KeyAction.parse("cmd+shift+4")))
+        #expect(layer[7] == (try KeyAction.parse("media:mute")))
+        #expect(layer[1] == nil)
     }
 
     @Test("clearAll zeroes every binding on every layer")
@@ -116,8 +127,9 @@ struct MacroPadTests {
         try pad.queryGeometry()
         try pad.clearAll()
 
-        let bindings = 3 + 1 * 3   // 6
-        // (bindings records + 1 commit) per layer.
+        let bindings = Wire.slotIndices(for: Geometry(keyCount: 3, knobCount: 1)).count
+        #expect(bindings == 6)   // keys 1-3 plus knob slots 16-18
+        // (bindings records + 1 commit) per layer, after the geometry query.
         #expect(mock.written.count == (bindings + 1) * Wire.layerCount + 1)
 
         let records = mock.payloads.dropFirst()   // skip the geometry query

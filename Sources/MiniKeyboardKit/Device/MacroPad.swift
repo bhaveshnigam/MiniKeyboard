@@ -30,16 +30,26 @@ public final class MacroPad {
         return geo
     }
 
-    /// Reads back what is currently programmed on one key.
-    public func readKey(index: Int, layer: Int,
-                        timeout: TimeInterval = 0.2) throws -> KeyAction {
-        try transport.write(Packet.readKey(index: UInt8(index),
-                                           layer: UInt8(layer + 1),
-                                           knobCount: UInt8(geometry?.knobCount ?? 0)))
-        guard let response = try transport.read(timeout: timeout) else {
-            throw DeviceError.badResponse
+    /// Reads back every record the pad reports for one layer.
+    ///
+    /// The firmware answers a single request with a burst of reports, so this
+    /// keeps reading until the device goes quiet rather than requesting each
+    /// key individually.
+    public func readLayer(_ layer: Int,
+                          idleTimeout: TimeInterval = 0.25) throws -> [Int: KeyAction] {
+        try transport.write(Packet.readLayer(layer))
+
+        var result: [Int: KeyAction] = [:]
+        while let response = try transport.read(timeout: idleTimeout) {
+            let rec = Packet.strip(response)
+            // The record carries its own key index and layer, so trust those
+            // rather than assuming the reply order.
+            guard let index = Packet.keyIndex(of: rec) else { continue }
+            if let l = Packet.layer(of: rec), l != layer { continue }
+            let action = Packet.decode(record: rec)
+            if action != .none { result[index] = action }
         }
-        return Packet.decode(record: response)
+        return result
     }
 
     /// Reads the entire current configuration into a profile.
@@ -47,14 +57,11 @@ public final class MacroPad {
         let geo = try geometry ?? queryGeometry()
         var profile = Profile(geometry: geo)
         for layer in 0..<Wire.layerCount {
-            for index in 1...max(geo.totalBindings, 1) {
-                // A key the firmware does not know about simply reads back empty.
-                let action = (try? readKey(index: index, layer: layer)) ?? .none
-                if action != .none {
-                    profile.set(action, key: index, layer: layer)
-                }
+            for (index, action) in try readLayer(layer) {
+                profile.set(action, key: index, layer: layer)
             }
         }
+        profile.assignments.sort { ($0.layer, $0.key) < ($1.layer, $1.key) }
         return profile
     }
 
@@ -82,9 +89,9 @@ public final class MacroPad {
 
     /// Clears every key on every layer.
     public func clearAll() throws {
-        let count = geometry?.totalBindings ?? 16
+        let geometry = self.geometry ?? Geometry(keyCount: Wire.keySlotCount, knobCount: 3)
         for layer in 0..<Wire.layerCount {
-            for index in 1...count {
+            for index in Wire.slotIndices(for: geometry) {
                 try transport.write(Packet.programKey(keyIndex: UInt8(index),
                                                       layer: layer, action: .none))
             }

@@ -91,3 +91,23 @@ extension KeyAction {
         try container.encode(displayName)
     }
 }
+
+/// Turns Foundation's nested decoding errors into something a user can act on.
+public func readableMessage(for error: any Error) -> String {
+    guard let decoding = error as? DecodingError else {
+        return "\(error)"
+    }
+    switch decoding {
+    case .dataCorrupted(let context):
+        let path = context.codingPath.map(\.stringValue).joined(separator: ".")
+        let where_ = path.isEmpty ? "" : " at \(path)"
+        return context.debugDescription + where_
+    case .keyNotFound(let key, _):
+        return "missing required field \"\(key.stringValue)\""
+    case .typeMismatch(_, let context), .valueNotFound(_, let context):
+        let path = context.codingPath.map(\.stringValue).joined(separator: ".")
+        return "\(context.debugDescription) at \(path)"
+    @unknown default:
+        return "\(decoding)"
+    }
+}
